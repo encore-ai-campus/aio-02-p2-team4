@@ -78,6 +78,59 @@ def test_ground_judgments_accepts_a_verified_contiguous_quote():
     ]
 
 
+def test_ground_judgments_emits_one_quote_per_source_page():
+    first_quote = "The agency reported a 4 percent rate in June."
+    second_quote = "The agency confirmed the rate remained 4 percent in June."
+    result = ground_judgments(
+        [claim("c1", "The rate was 4 percent in June.", "fact")],
+        [{
+            "claimId": "c1",
+            "verdictCode": "mostly_supported",
+            "factScore": 85,
+            "summary": "The source directly reports the rate.",
+            "confirmed": [],
+            "unresolved": [],
+            "evidence": [
+                {"sourceId": "s1", "quote": first_quote, "relation": "supports", "comparison": "same"},
+                {"sourceId": "s1", "quote": second_quote, "relation": "supports", "comparison": "same"},
+            ],
+        }],
+        [{"id": "s1", "url": "https://example.org/report", "accessStatus": "verified"}],
+        {"s1": f"{first_quote} {second_quote}"},
+    )
+
+    assert result["claims"][0]["verdictCode"] == "mostly_supported"
+    assert result["claims"][0]["evidenceIds"] == ["e1"]
+    assert len(result["evidence"]) == 1
+    assert result["evidence"][0]["quote"] == first_quote
+
+
+def test_ground_judgments_keeps_same_page_conflict_when_emitting_one_quote():
+    support = "The agency reported that the rate was 4 percent in June."
+    contradiction = "The agency reported that the rate was 6 percent in June."
+    result = ground_judgments(
+        [claim("c1", "The rate was 4 percent in June.", "fact")],
+        [{
+            "claimId": "c1",
+            "verdictCode": "mostly_supported",
+            "factScore": 85,
+            "summary": "The source supports the claim.",
+            "confirmed": [],
+            "unresolved": [],
+            "evidence": [
+                {"sourceId": "s1", "quote": support, "relation": "supports", "comparison": "same"},
+                {"sourceId": "s1", "quote": contradiction, "relation": "contradicts", "comparison": "same"},
+            ],
+        }],
+        [{"id": "s1", "url": "https://example.org/report", "accessStatus": "verified"}],
+        {"s1": f"{support} {contradiction}"},
+    )
+
+    assert result["claims"][0]["verdictCode"] == "insufficient_evidence"
+    assert "같은 출처" in result["claims"][0]["summary"]
+    assert len(result["evidence"]) == 1
+
+
 def test_ground_judgments_attaches_only_the_matching_section_not_the_whole_page():
     quote = '텔러린 앱은 여러 기능을 통합해 제공하는 서비스입니다.'
     section_text = quote + ' 사용자는 앱에서 메시지와 일정을 관리할 수 있습니다.'

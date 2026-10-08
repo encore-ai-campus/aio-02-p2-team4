@@ -514,7 +514,13 @@ def ground_judgments(
         result["confirmed"] = confirmed
         result["unresolved"] = unresolved
         result["warnings"] = warnings
+        # Keep every validated quote for verdict reconciliation, but expose
+        # only one citation per source page for this claim.
+        emitted_source_ids: set[str] = set()
         for item in valid:
+            if item.source_id in emitted_source_ids:
+                continue
+            emitted_source_ids.add(item.source_id)
             evidence_id = f"e{next_evidence_id}"
             next_evidence_id += 1
             evidence.append(_evidence_dict(item, claim_id, evidence_id, source_sections))
@@ -603,7 +609,9 @@ async def verify_claims(
                 "When dates or conditions cannot be established, write CONDITION_UNKNOWN in unresolved. "
                 "Use the supplied computed values for any arithmetic; never compute percentages or unit conversions yourself. "
                 "Never use search summaries or URLs as evidence. Provide exact contiguous quotations "
-                "of at least 10 characters and valid source IDs. Set comparison to same only when "
+                "of at least 10 characters and valid source IDs. Use at most one evidence quote "
+                "from each source page per claim, choosing its strongest single passage. "
+                "Set comparison to same only when "
                 "Never use search summaries or URLs as evidence. Provide exact contiguous quotations "
                 "of at least 10 characters and valid source IDs. Set comparison to same only when "
                 "date, geography, population, unit, and other material conditions match; use different "
