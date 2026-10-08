@@ -339,22 +339,26 @@ function VerifyTimeline({progress}: {progress: ChatProgress}) {
   const currentIndex = progress.completed
     ? VERIFY_STAGES.length
     : Math.max(0, VERIFY_STAGES.findIndex(stage => stage.id === progress.statusStage));
+  const visibleStages = VERIFY_STAGES.slice(0, Math.min(VERIFY_STAGES.length, Math.max(3, currentIndex + 1)));
   const [travel, setTravel] = useState<{from: number; to: number; key: number} | null>(null);
   const prevRef = useRef(currentIndex);
   useEffect(() => {
     const from = prevRef.current;
-    const to = Math.min(currentIndex, VERIFY_STAGES.length - 1);
+    const to = Math.min(currentIndex, visibleStages.length - 1);
     prevRef.current = currentIndex;
-    if (to <= from) return;
+    if (to <= from) {
+      setTravel(null);
+      return;
+    }
     const key = from * 10 + to;
     setTravel({from, to, key});
     const timer = setTimeout(() => setTravel(active => active?.key === key ? null : active), 900);
     return () => clearTimeout(timer);
-  }, [currentIndex]);
+  }, [currentIndex, visibleStages.length]);
   if (!progress.statusStage && !progress.completed && !progress.error) return null;
   return <ol className="verify-timeline" aria-label="검증 단계 진행">
-    {VERIFY_STAGES.map((stage, index) => <li key={stage.id} data-state={index < currentIndex ? 'done' : index === currentIndex ? 'active' : 'todo'}><span className="verify-timeline-dot" aria-hidden="true"/><span>{stage.label}</span></li>)}
-    {travel && <span key={travel.key} className="verify-traveler" aria-hidden="true" style={{'--travel-from': `${((travel.from + 0.5) / VERIFY_STAGES.length) * 100}%`, '--travel-width': `${((travel.to - travel.from) / VERIFY_STAGES.length) * 100}%`} as CSSProperties}/>}
+    {visibleStages.map((stage, index) => <li key={stage.id} data-state={index < currentIndex ? 'done' : index === currentIndex ? 'active' : 'todo'}><span className="verify-timeline-dot" aria-hidden="true"/><span>{stage.label}</span></li>)}
+    {travel && <span key={travel.key} className="verify-traveler" aria-hidden="true" style={{'--travel-from': `${((travel.from + 0.5) / visibleStages.length) * 100}%`, '--travel-width': `${((travel.to - travel.from) / visibleStages.length) * 100}%`} as CSSProperties}/>}
   </ol>;
 }
 
