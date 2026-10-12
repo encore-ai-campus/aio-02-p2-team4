@@ -1,0 +1,470 @@
+<div id="true-or-not-wireframe">
+  <div class="wf-flow" aria-label="대표 사용자 흐름">
+    <span class="wf-flow-label">대표 사용자 흐름</span>
+    <span>원문 입력</span><span class="wf-arrow" aria-hidden="true">→</span>
+    <span>답변·진행</span><span class="wf-arrow" aria-hidden="true">→</span>
+    <span>주장 선택</span><span class="wf-arrow" aria-hidden="true">→</span>
+    <span>점수·근거 확인</span>
+    <span class="wf-flow-alt">대시보드 바로가기: 빈 상태 → 예시 결과</span>
+  </div>
+
+  <div class="wf-screen-picker" aria-label="와이어프레임 화면 목록">
+    <span class="wf-flow-label">화면 목록</span>
+    <button type="button" data-preview-screen="start" aria-pressed="true">01 원문 입력</button>
+    <button type="button" data-preview-screen="conversation" aria-pressed="false">02 대화 진행</button>
+    <button type="button" data-preview-screen="claims" aria-pressed="false">03 주장 선택</button>
+    <button type="button" data-preview-screen="dashboard-empty" aria-pressed="false">04 대시보드 빈 상태</button>
+    <button type="button" data-preview-screen="results" aria-pressed="false">05 검증 결과</button>
+  </div>
+
+  <section class="wf-shell" aria-label="True or Not 화면 와이어프레임">
+    <aside class="wf-sidebar">
+      <div class="wf-brand"><span class="wf-brand-mark" aria-hidden="true">◉</span><span><strong>True or Not</strong><small>팩트체크 에이전트</small></span></div>
+      <div class="wf-workspace"><span class="wf-avatar" aria-hidden="true">F</span><span><strong>나의 워크스페이스</strong><small>프로필</small></span></div>
+
+      <div class="wf-section-label">워크스페이스</div>
+      <nav class="wf-nav" aria-label="워크스페이스 메뉴">
+        <button type="button" data-open-screen="start" aria-current="page"><span class="wf-line" aria-hidden="true"></span><span class="wf-index">01</span><span>대화 시작</span></button>
+        <button type="button" data-open-screen="dashboard"><span class="wf-line" aria-hidden="true"></span><span class="wf-index">02</span><span>검증 대시보드</span></button>
+      </nav>
+
+      <div class="wf-saved">
+        <button type="button" class="wf-new" data-open-screen="start">＋ 새 대화</button>
+        <div class="wf-saved-label">저장 대화</div>
+        <ul class="wf-conversations">
+          <li class="wf-conversation"><button type="button" class="wf-conversation-open" data-go-screen="conversation" data-tooltip="달의 뒷면은 영원히 햇빛이 들지 않는 어두운 면인가요?"><span class="wf-line" aria-hidden="true"></span><span class="wf-index">01</span><span class="wf-conversation-title">달의 뒷면은 영원히 햇빛이 들지 않는 어두운 면인가요?</span></button><button type="button" class="wf-delete" data-delete-chat data-chat-title="달의 뒷면은 영원히 햇빛이 들지 않는 어두운 면인가요?">삭제</button></li>
+          <li class="wf-conversation"><button type="button" class="wf-conversation-open" data-go-screen="conversation" data-tooltip="저장된 대화 제목 예시"><span class="wf-line" aria-hidden="true"></span><span class="wf-index">02</span><span class="wf-conversation-title">저장된 대화 제목 예시</span></button><button type="button" class="wf-delete" data-delete-chat data-chat-title="저장된 대화 제목 예시">삭제</button></li>
+        </ul>
+      </div>
+    </aside>
+
+    <main class="wf-main">
+      <section class="wf-screen" data-screen="start" aria-labelledby="wf-start-title">
+        <header class="wf-page-head">
+          <div><p class="wf-eyebrow">01 / 원문 입력</p><h1 id="wf-start-title">확인하고 싶은 원문을 입력하세요.</h1><p>문장을 나누어 확인할 수 있는 출처와 인용을 연결합니다.</p></div>
+        </header>
+
+        <div class="wf-composer">
+          <label class="wf-field-label" for="wf-original-input">검증할 원문</label>
+          <textarea id="wf-original-input" rows="5" maxlength="12000" placeholder="확인하고 싶은 주장이나 원문을 입력해 주세요. 이미지는 붙여넣을 수 있습니다."></textarea>
+          <div class="wf-input-meta"><span>0 / 12,000</span><span>Shift + Enter로 제출</span></div>
+          <div class="wf-controls">
+            <button type="button" class="wf-control" data-tooltip="이미지 파일을 선택하거나 붙여넣을 수 있습니다.">이미지 첨부</button>
+            <button type="button" class="wf-control" data-tooltip="원문에서 검증할 요청을 선택해 입력합니다.">확인 요청 선택 입력</button>
+            <span class="wf-control-spacer"></span>
+            <button type="button" class="wf-control" data-tooltip="검증 실행 모드를 선택합니다.">Auto</button>
+            <button type="button" class="wf-send" aria-label="검증 요청 보내기" data-go-screen="conversation">→</button>
+          </div>
+        </div>
+
+        <div class="wf-under-composer"><button type="button" class="wf-text-button" data-tooltip="외부 전송 동의 설정을 확인하거나 철회합니다.">외부 전송 동의 철회</button><button type="button" class="wf-text-button" data-go-screen="conversation">예시로 시작하기 →</button></div>
+      </section>
+
+      <section class="wf-screen" data-screen="conversation" aria-labelledby="wf-conversation-title" hidden>
+        <header class="wf-page-head">
+          <div><p class="wf-eyebrow">02 / 대화 진행</p><h1 id="wf-conversation-title">질문과 검증 진행 상황</h1><p>답변을 확인한 뒤 원문에서 주장을 골라 근거를 살펴봅니다.</p></div>
+          <button type="button" class="wf-outline" data-go-screen="claims">검증할 주장 보기 →</button>
+        </header>
+        <div class="wf-chat-thread">
+          <div class="wf-message wf-user-message"><span class="wf-field-label">입력 원문</span><p>달의 뒷면은 영원히 햇빛이 들지 않는 어두운 면인가요?</p></div>
+          <div class="wf-message wf-agent-message"><span class="wf-field-label">에이전트 답변</span><div class="wf-answer-lines"><span></span><span></span><span></span></div><p class="wf-helper">답변은 유지되며, 저장·불러오기 상태는 별도로 안내됩니다.</p></div>
+          <div class="wf-chat-action"><span class="wf-helper">원문에서 추출한 주장을 선택해 검증을 이어갑니다.</span><button type="button" class="wf-primary" data-go-screen="claims">주장 선택으로 이동 →</button></div>
+        </div>
+      </section>
+
+      <section class="wf-screen" data-screen="claims" aria-labelledby="wf-claims-title" hidden>
+        <header class="wf-page-head">
+          <div><p class="wf-eyebrow">03 / 검증 요청 시점의 원문</p><h1 id="wf-claims-title">검증할 주장을 선택하세요.</h1><p>원문에서 추출한 최대 3개의 주장을 확인합니다.</p></div>
+          <button type="button" class="wf-outline" data-go-screen="start">원문으로 돌아가기</button>
+        </header>
+
+        <div class="wf-review-grid">
+          <article class="wf-panel wf-original">
+            <p class="wf-field-label">검증한 원문</p>
+            <p class="wf-quote">달의 뒷면은 영원히 햇빛이 들지 않는 어두운 면인가요?</p>
+            <div class="wf-divider"></div>
+            <p class="wf-helper">강조된 문장을 선택하면 오른쪽 근거가 바뀝니다.</p>
+          </article>
+
+          <div class="wf-review-side">
+            <section class="wf-panel wf-claim-list" aria-label="추출된 주장">
+              <div class="wf-panel-head"><strong>추출된 주장</strong><span>최대 3개</span></div>
+              <button type="button" class="wf-claim-choice" data-claim="추출된 주장 01" aria-pressed="true"><span>01</span><span>추출된 주장 01</span><span aria-hidden="true">›</span></button>
+              <button type="button" class="wf-claim-choice" data-claim="추출된 주장 02" aria-pressed="false"><span>02</span><span>추출된 주장 02</span><span aria-hidden="true">›</span></button>
+              <button type="button" class="wf-claim-choice" data-claim="추출된 주장 03" aria-pressed="false"><span>03</span><span>추출된 주장 03</span><span aria-hidden="true">›</span></button>
+            </section>
+
+            <section class="wf-panel wf-evidence-preview" aria-live="polite">
+              <div class="wf-panel-head"><strong>연결 근거</strong><span>출처와 인용</span></div>
+              <p class="wf-selected-claim" id="wf-selected-claim">추출된 주장 01</p>
+              <div class="wf-evidence-row"><span class="wf-skeleton wf-skeleton-short"></span><span class="wf-skeleton"></span><span class="wf-skeleton wf-skeleton-medium"></span></div>
+              <div class="wf-evidence-row"><span class="wf-skeleton wf-skeleton-short"></span><span class="wf-skeleton"></span><span class="wf-skeleton wf-skeleton-medium"></span></div>
+            </section>
+          </div>
+        </div>
+
+        <footer class="wf-screen-footer"><span>선택한 주장을 검증 대시보드에서 확인할 수 있습니다.</span><button type="button" class="wf-primary" data-go-screen="results">검증 결과 보기 →</button></footer>
+      </section>
+
+      <section class="wf-screen" data-screen="dashboard-empty" aria-labelledby="wf-empty-title" hidden>
+        <header class="wf-page-head">
+          <div><p class="wf-eyebrow">04 / 검증 대시보드</p><h1 id="wf-empty-title">근거와 함께 확인하세요.</h1><p>주장별 신뢰지수, 확인된 인용, 출처의 관계를 한 흐름으로 살펴보세요.</p></div>
+        </header>
+        <div class="wf-empty-state">
+          <div class="wf-empty-symbol" aria-hidden="true">＋</div>
+          <h2>검증 결과가 이곳에 쌓입니다.</h2>
+          <p>대화창에 원문을 보내면 주장별 점수와 근거 출처를 연결해 보여드립니다.</p>
+          <div class="wf-empty-metrics"><span>--<small>신뢰지수</small></span><span>--<small>검토 출처</small></span><span>--<small>연결 근거</small></span></div>
+          <button type="button" class="wf-primary" data-go-screen="results">예시 대시보드 보기 →</button>
+        </div>
+      </section>
+
+      <section class="wf-screen" data-screen="results" aria-labelledby="wf-results-title" hidden>
+        <header class="wf-page-head wf-results-head">
+          <div><p class="wf-eyebrow">05 / 검증 대시보드 · 예시 결과</p><h1 id="wf-results-title">근거와 함께 확인하세요.</h1><p>주장별 점수, 확인된 인용과 출처의 관계를 살펴보세요.</p></div>
+          <button type="button" class="wf-outline" data-tooltip="검증 결과를 파일로 내보냅니다.">결과 내보내기</button>
+        </header>
+
+        <div class="wf-dashboard-grid">
+          <article class="wf-panel wf-score-panel">
+            <div class="wf-score-head"><div><p class="wf-field-label">종합 신뢰지수</p><h2>팩트 점수</h2></div><button type="button" class="wf-outline wf-score-toggle" aria-controls="wf-score-criteria" aria-expanded="false" data-score-toggle>ⓘ 점수 기준</button></div>
+            <div class="wf-score-content"><div class="wf-score-ring" role="img" aria-label="예시 팩트 점수 13점"><span>13</span></div><div><p class="wf-score-summary">주장별 점수의 평균입니다.</p><p class="wf-helper">확인된 인용과 남은 불확실성을 함께 반영합니다.</p></div></div>
+            <div class="wf-stats"><div><span>검증 주장</span><strong>3</strong></div><div><span>검토 출처</span><strong>6</strong></div><div><span>연결 근거</span><strong>12</strong></div><div><span>확인 필요</span><strong>4</strong></div></div>
+
+            <section class="wf-score-popover" id="wf-score-criteria" role="dialog" aria-label="팩트 점수 기준" hidden>
+              <div class="wf-panel-head"><strong>점수 기준</strong><button type="button" class="wf-close" aria-label="점수 기준 닫기" data-score-close>×</button></div>
+              <table class="wf-rubric"><thead><tr><th>점수</th><th>판정 범위</th><th>읽는 방법</th></tr></thead><tbody>
+                <tr><td>80–100</td><td>검증된 사실</td><td>근거가 강하게 지지</td></tr>
+                <tr><td>60–79</td><td>대체적으로 사실</td><td>지지 근거가 우세</td></tr>
+                <tr><td>40–59</td><td>중립</td><td>엇갈리거나 불충분</td></tr>
+                <tr><td>20–39</td><td>대체적으로 거짓</td><td>반박 근거가 우세</td></tr>
+                <tr><td>0–19</td><td>거짓</td><td>근거가 강하게 반박</td></tr>
+              </tbody></table>
+            </section>
+          </article>
+
+          <section class="wf-panel wf-claim-results" aria-labelledby="wf-claim-results-title">
+            <div class="wf-panel-head"><strong id="wf-claim-results-title">주장별 검증 결과</strong><span>점수 표시</span></div>
+            <div class="wf-result-row"><span class="wf-index">01</span><span class="wf-skeleton"></span><strong>--점</strong></div>
+            <div class="wf-result-row"><span class="wf-index">02</span><span class="wf-skeleton"></span><strong>--점</strong></div>
+            <div class="wf-result-row"><span class="wf-index">03</span><span class="wf-skeleton"></span><strong>--점</strong></div>
+            <p class="wf-helper">주장별 점수와 판정을 각각 표시합니다.</p>
+          </section>
+
+          <section class="wf-panel wf-source-results" aria-labelledby="wf-source-results-title">
+            <div class="wf-panel-head"><strong id="wf-source-results-title">근거 출처</strong><span>검토한 자료와 연결 근거</span></div>
+            <div class="wf-source-row"><span class="wf-index">01</span><div><span class="wf-skeleton wf-skeleton-medium"></span><span class="wf-skeleton"></span></div><span class="wf-outline wf-relation">지지 근거</span></div>
+            <div class="wf-source-row"><span class="wf-index">02</span><div><span class="wf-skeleton wf-skeleton-medium"></span><span class="wf-skeleton"></span></div><span class="wf-outline wf-relation">반박 근거</span></div>
+            <div class="wf-source-row"><span class="wf-index">03</span><div><span class="wf-skeleton wf-skeleton-medium"></span><span class="wf-skeleton"></span></div><span class="wf-outline wf-relation">연결 근거</span></div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <div class="wf-delete-overlay" id="wf-delete-confirm" role="dialog" aria-modal="true" aria-labelledby="wf-delete-title" hidden>
+      <div class="wf-delete-dialog"><h2 id="wf-delete-title">저장된 대화를 삭제하시겠습니까?</h2><p id="wf-delete-chat-name"></p><div><button type="button" class="wf-outline" data-delete-cancel>취소</button><button type="button" class="wf-primary" data-delete-confirm>삭제</button></div></div>
+    </div>
+  </section>
+
+  <section class="wf-handoff" aria-labelledby="wf-handoff-title">
+    <details open>
+      <summary id="wf-handoff-title">화면·기능 전달 메모</summary>
+      <div class="wf-handoff-grid">
+        <div>
+          <h2>화면 목록과 이동 흐름</h2>
+          <ol class="wf-screen-list">
+            <li><strong>01 원문 입력</strong> — 새 대화와 입력 수단을 제공합니다.</li>
+            <li><strong>02 대화 진행</strong> — 원문과 에이전트 답변을 확인합니다.</li>
+            <li><strong>03 주장 선택</strong> — 원문에서 추출한 최대 3개 주장을 고르고 연결 근거를 확인합니다.</li>
+            <li><strong>04 대시보드 빈 상태</strong> — 아직 결과가 없을 때 시작 안내를 보여줍니다.</li>
+            <li><strong>05 검증 결과</strong> — 평균 팩트 점수, 주장별 점수, 출처와 연결 근거를 확인합니다.</li>
+          </ol>
+          <p class="wf-handoff-note">기본 경로는 01 → 02 → 03 → 05이며, 대시보드에 결과가 없으면 04를 표시합니다. 보조 상태로 저장 대화 없음 안내, 답변 생성 중 진행 메시지, 답변을 유지하는 저장 오류와 재시도 안내를 포함합니다.</p>
+        </div>
+        <div>
+          <h2>요소별 동작</h2>
+          <p class="wf-screen-list-hint"><strong>화면:</strong> 이 열에 각 요소가 나오는 화면을 적었습니다. ‘공통 메뉴’는 모든 화면에 보이는 왼쪽 메뉴입니다.</p>
+          <div class="wf-table-wrap"><table class="wf-action-table"><thead><tr><th>요소</th><th>동작</th><th>화면</th></tr></thead><tbody>
+            <tr><td>워크스페이스·프로필</td><td>워크스페이스 진입 영역입니다. 세부 프로필 설정 화면은 이번 검증 흐름 범위 밖입니다.</td><td>공통 메뉴</td></tr>
+            <tr><td>＋ 새 대화</td><td>새 대화 입력 화면으로 이동</td><td>공통 메뉴 → 01 원문 입력</td></tr>
+            <tr><td>저장 대화 제목</td><td>해당 대화를 불러오며, 한 줄 말줄임과 전체 제목 툴팁을 제공합니다.</td><td>공통 메뉴 → 02 대화 진행</td></tr>
+            <tr><td>삭제</td><td>확인창에서 승인한 뒤 대화를 삭제합니다.</td><td>공통 메뉴</td></tr>
+            <tr><td>저장 대화 없음</td><td>저장된 대화가 없다는 안내를 표시합니다.</td><td>공통 메뉴</td></tr>
+            <tr><td>원문 입력·이미지</td><td>텍스트 또는 붙여넣은 이미지를 입력하고 검증 요청을 보냅니다.</td><td>01 원문 입력</td></tr>
+            <tr><td>확인 요청 선택 입력</td><td>검증 요청 내용을 선택형 입력으로 지정합니다.</td><td>01 원문 입력</td></tr>
+            <tr><td>Auto</td><td>검증 실행 모드 메뉴를 엽니다.</td><td>01 원문 입력</td></tr>
+            <tr><td>예시로 시작하기</td><td>예시 질문을 불러와 대화 흐름을 시작합니다.</td><td>01 원문 입력 → 02 대화 진행</td></tr>
+            <tr><td>검증할 주장 보기</td><td>대화에서 추출된 주장 선택 화면으로 이동합니다.</td><td>02 대화 진행 → 03 주장 선택</td></tr>
+            <tr><td>주장 항목</td><td>선택한 주장에 연결된 근거 출처를 갱신합니다.</td><td>03 주장 선택</td></tr>
+            <tr><td>검증 결과 보기</td><td>주장별 점수, 판정, 출처와 연결 근거를 표시합니다.</td><td>03 주장 선택 → 05 검증 결과</td></tr>
+            <tr><td>검증 대시보드</td><td>결과가 없으면 빈 상태, 결과가 있으면 점수와 근거를 표시합니다.</td><td>04 빈 상태 / 05 검증 결과</td></tr>
+            <tr><td>점수 기준</td><td>점수 구간과 판정 기준 표를 열고 닫습니다.</td><td>05 검증 결과</td></tr>
+            <tr><td>결과 내보내기</td><td>현재 검증 결과를 파일로 내보냅니다.</td><td>05 검증 결과</td></tr>
+            <tr><td>외부 전송 동의 철회</td><td>외부 전송 동의 설정으로 이동합니다.</td><td>01 원문 입력</td></tr>
+            <tr><td>저장 실패 안내·재시도</td><td>답변을 유지한 채 저장·불러오기 오류를 알리고, 저장 재시도를 제공합니다.</td><td>02 대화 진행 (오류 상태)</td></tr>
+          </tbody></table></div>
+        </div>
+      </div>
+      <p class="wf-handoff-note">표시된 13점과 요약 수치는 참고 화면의 예시입니다. 주장명·출처 막대와 개별 점수는 실제 검증 응답으로 채워지는 자리표시자입니다. 결과 내보내기의 파일 형식, 프로필 설정의 세부 항목은 별도 정책 확정이 필요합니다. 이 시안과 동작 설명은 현재 대화에서 함께 확인할 수 있습니다.</p>
+    </details>
+  </section>
+</div>
+
+<style>
+#true-or-not-wireframe {
+  --ton-bg: light-dark(#f4f5f6, #111315);
+  --ton-surface: light-dark(#ffffff, #1a1d20);
+  --ton-surface-alt: light-dark(#eceeef, #202428);
+  --ton-text: light-dark(#202327, #eff1f2);
+  --ton-muted: light-dark(#626970, #aab0b5);
+  --ton-line: light-dark(#c6cbd0, #444a50);
+  --ton-line-strong: light-dark(#8c949b, #788087);
+  color: var(--ton-text);
+  font-family: Arial, "Malgun Gothic", sans-serif;
+  font-size: 13px;
+  line-height: 1.55;
+}
+#true-or-not-wireframe * { box-sizing: border-box; }
+#true-or-not-wireframe button,
+#true-or-not-wireframe textarea { color: inherit; font: inherit; }
+#true-or-not-wireframe [hidden] { display: none !important; }
+#true-or-not-wireframe .wf-flow { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; padding: 0 0 12px; color: var(--ton-muted); font-size: 12px; }
+#true-or-not-wireframe .wf-flow-label { color: var(--ton-text); font-weight: 700; margin-right: 5px; }
+#true-or-not-wireframe .wf-arrow { color: var(--ton-line-strong); }
+#true-or-not-wireframe .wf-flow-alt { flex-basis: 100%; margin-left: 84px; }
+#true-or-not-wireframe .wf-screen-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; padding: 8px 10px; border: 1px dashed var(--ton-line); color: var(--ton-muted); font-size: 11px; }
+#true-or-not-wireframe .wf-screen-picker button { min-height: 28px; padding: 4px 7px; border: 1px solid var(--ton-line); border-radius: 6px; background: transparent; font-size: 11px; }
+#true-or-not-wireframe .wf-screen-picker button[aria-pressed="true"] { border-color: var(--ton-line-strong); background: var(--ton-surface-alt); color: var(--ton-text); }
+#true-or-not-wireframe .wf-shell { position: relative; display: grid; grid-template-columns: 210px minmax(0, 1fr); border: 1px solid var(--ton-line); background: var(--ton-bg); }
+#true-or-not-wireframe .wf-sidebar { display: flex; flex-direction: column; gap: 20px; min-width: 0; padding: 18px 14px; border-right: 1px solid var(--ton-line); background: var(--ton-surface); }
+#true-or-not-wireframe .wf-brand { display: flex; align-items: center; gap: 11px; }
+#true-or-not-wireframe .wf-brand-mark { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid var(--ton-line-strong); border-radius: 50%; font-size: 17px; }
+#true-or-not-wireframe .wf-brand strong,
+#true-or-not-wireframe .wf-brand small,
+#true-or-not-wireframe .wf-workspace strong,
+#true-or-not-wireframe .wf-workspace small { display: block; }
+#true-or-not-wireframe .wf-brand strong { font-size: 17px; }
+#true-or-not-wireframe .wf-brand small,
+#true-or-not-wireframe .wf-workspace small { margin-top: 2px; color: var(--ton-muted); font-size: 11px; }
+#true-or-not-wireframe .wf-workspace { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--ton-line); border-radius: 10px; }
+#true-or-not-wireframe .wf-avatar { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid var(--ton-line-strong); border-radius: 8px; font-weight: 700; }
+#true-or-not-wireframe .wf-section-label,
+#true-or-not-wireframe .wf-saved-label { color: var(--ton-muted); font-size: 11px; font-weight: 700; }
+#true-or-not-wireframe .wf-nav { display: grid; gap: 5px; margin-top: -12px; }
+#true-or-not-wireframe .wf-nav button { display: grid; grid-template-columns: 32px 24px minmax(0, 1fr); align-items: center; gap: 5px; min-width: 0; min-height: 38px; padding: 0; border: 0; background: transparent; text-align: left; color: var(--ton-muted); }
+#true-or-not-wireframe .wf-nav button[aria-current="page"] { color: var(--ton-text); font-weight: 700; }
+#true-or-not-wireframe .wf-line { display: block; width: 32px; height: 1px; background: var(--ton-line); }
+#true-or-not-wireframe .wf-nav button[aria-current="page"] .wf-line,
+#true-or-not-wireframe .wf-conversation-open:focus-visible .wf-line { background: var(--ton-text); }
+#true-or-not-wireframe .wf-index { color: var(--ton-muted); font-family: ui-monospace, Consolas, monospace; font-size: 10px; }
+#true-or-not-wireframe .wf-nav button[aria-current="page"] .wf-index { color: var(--ton-text); }
+#true-or-not-wireframe .wf-saved { display: grid; gap: 12px; }
+#true-or-not-wireframe .wf-new,
+#true-or-not-wireframe .wf-outline,
+#true-or-not-wireframe .wf-primary { min-height: 36px; padding: 7px 10px; border: 1px solid var(--ton-line-strong); border-radius: 8px; background: transparent; text-align: left; }
+#true-or-not-wireframe .wf-new { justify-self: start; font-weight: 700; }
+#true-or-not-wireframe .wf-conversations { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }
+#true-or-not-wireframe .wf-conversation { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 3px; min-width: 0; min-height: 36px; }
+#true-or-not-wireframe .wf-conversation-open { display: grid; grid-template-columns: 32px 24px minmax(0, 1fr); align-items: center; gap: 4px; min-width: 0; min-height: 36px; padding: 0; border: 0; background: transparent; text-align: left; }
+#true-or-not-wireframe .wf-conversation-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#true-or-not-wireframe .wf-delete { min-height: 28px; padding: 5px 2px 5px 5px; border: 0; background: transparent; color: var(--ton-muted); font-size: 10px; }
+#true-or-not-wireframe .wf-main { min-width: 0; padding: 30px clamp(18px, 4vw, 42px); }
+#true-or-not-wireframe .wf-screen { min-width: 0; }
+#true-or-not-wireframe .wf-page-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; }
+#true-or-not-wireframe .wf-eyebrow,
+#true-or-not-wireframe .wf-field-label { margin: 0 0 6px; color: var(--ton-muted); font-size: 11px; font-weight: 700; }
+#true-or-not-wireframe h1 { margin: 0; font-size: clamp(21px, 3vw, 29px); line-height: 1.25; }
+#true-or-not-wireframe h2 { margin: 2px 0 0; font-size: 17px; }
+#true-or-not-wireframe .wf-page-head p:last-child { margin: 7px 0 0; color: var(--ton-muted); }
+#true-or-not-wireframe .wf-composer,
+#true-or-not-wireframe .wf-panel { position: relative; min-width: 0; border: 1px solid var(--ton-line); border-radius: 12px; background: var(--ton-surface); }
+#true-or-not-wireframe .wf-composer { padding: 16px; }
+#true-or-not-wireframe .wf-composer textarea { display: block; width: 100%; min-height: 118px; resize: vertical; padding: 10px; border: 1px solid var(--ton-line); border-radius: 7px; background: var(--ton-bg); color: var(--ton-text); }
+#true-or-not-wireframe .wf-composer textarea::placeholder { color: var(--ton-muted); opacity: 1; }
+#true-or-not-wireframe .wf-input-meta { display: flex; justify-content: space-between; gap: 10px; margin: 7px 0 12px; color: var(--ton-muted); font-size: 11px; }
+#true-or-not-wireframe .wf-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; border-top: 1px solid var(--ton-line); padding-top: 12px; }
+#true-or-not-wireframe .wf-control,
+#true-or-not-wireframe .wf-send,
+#true-or-not-wireframe .wf-text-button,
+#true-or-not-wireframe .wf-close { min-height: 34px; padding: 6px 9px; border: 1px solid var(--ton-line); border-radius: 7px; background: transparent; }
+#true-or-not-wireframe .wf-control-spacer { flex: 1; }
+#true-or-not-wireframe .wf-send { width: 36px; background: var(--ton-surface-alt); font-size: 18px; }
+#true-or-not-wireframe .wf-under-composer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 14px; color: var(--ton-muted); font-size: 12px; }
+#true-or-not-wireframe .wf-text-button { min-height: unset; padding: 0; border: 0; color: var(--ton-text); }
+#true-or-not-wireframe .wf-chat-thread { display: grid; gap: 14px; max-width: 720px; margin: 0 auto; }
+#true-or-not-wireframe .wf-message { padding: 14px; border: 1px solid var(--ton-line); border-radius: 10px; background: var(--ton-surface); }
+#true-or-not-wireframe .wf-message p { margin: 0; }
+#true-or-not-wireframe .wf-user-message { justify-self: end; width: min(82%, 540px); }
+#true-or-not-wireframe .wf-agent-message { width: 100%; }
+#true-or-not-wireframe .wf-answer-lines { display: grid; gap: 8px; margin: 10px 0; }
+#true-or-not-wireframe .wf-answer-lines span { display: block; width: 100%; height: 8px; border-radius: 4px; background: var(--ton-surface-alt); }
+#true-or-not-wireframe .wf-answer-lines span:nth-child(2) { width: 92%; }
+#true-or-not-wireframe .wf-answer-lines span:nth-child(3) { width: 75%; }
+#true-or-not-wireframe .wf-chat-action { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding-top: 12px; border-top: 1px solid var(--ton-line); }
+#true-or-not-wireframe .wf-review-grid { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 14px; }
+#true-or-not-wireframe .wf-panel { padding: 15px; }
+#true-or-not-wireframe .wf-original { align-self: start; }
+#true-or-not-wireframe .wf-quote { margin: 14px 0; padding: 12px; border: 1px solid var(--ton-line-strong); border-radius: 7px; font-size: 15px; font-weight: 700; }
+#true-or-not-wireframe .wf-divider { height: 1px; background: var(--ton-line); }
+#true-or-not-wireframe .wf-helper { margin: 9px 0 0; color: var(--ton-muted); font-size: 11px; }
+#true-or-not-wireframe .wf-review-side { display: grid; gap: 12px; min-width: 0; }
+#true-or-not-wireframe .wf-panel-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; }
+#true-or-not-wireframe .wf-panel-head span { color: var(--ton-muted); font-size: 11px; }
+#true-or-not-wireframe .wf-claim-list { display: grid; gap: 5px; }
+#true-or-not-wireframe .wf-claim-choice { display: grid; grid-template-columns: 24px minmax(0, 1fr) 14px; align-items: center; gap: 8px; width: 100%; min-height: 38px; padding: 6px 8px; border: 1px solid var(--ton-line); border-radius: 6px; background: transparent; text-align: left; }
+#true-or-not-wireframe .wf-claim-choice[aria-pressed="true"] { border-color: var(--ton-line-strong); background: var(--ton-surface-alt); }
+#true-or-not-wireframe .wf-selected-claim { margin: 0 0 12px; font-weight: 700; }
+#true-or-not-wireframe .wf-evidence-row { display: grid; gap: 6px; margin-top: 9px; }
+#true-or-not-wireframe .wf-skeleton { display: block; width: 100%; height: 8px; border-radius: 4px; background: var(--ton-surface-alt); }
+#true-or-not-wireframe .wf-skeleton-short { width: 28%; }
+#true-or-not-wireframe .wf-skeleton-medium { width: 68%; }
+#true-or-not-wireframe .wf-screen-footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--ton-line); color: var(--ton-muted); font-size: 12px; }
+#true-or-not-wireframe .wf-primary { background: var(--ton-surface-alt); color: var(--ton-text); font-weight: 700; }
+#true-or-not-wireframe .wf-results-head { margin-bottom: 18px; }
+#true-or-not-wireframe .wf-dashboard-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 13px; }
+#true-or-not-wireframe .wf-score-panel { grid-column: 1 / -1; }
+#true-or-not-wireframe .wf-score-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+#true-or-not-wireframe .wf-score-toggle { white-space: nowrap; }
+#true-or-not-wireframe .wf-score-content { display: flex; align-items: center; gap: 18px; padding: 14px 0; }
+#true-or-not-wireframe .wf-score-ring { display: grid; flex: 0 0 100px; width: 100px; height: 100px; place-items: center; border: 8px solid var(--ton-line); border-top-color: var(--ton-line-strong); border-radius: 50%; font-size: 30px; font-weight: 700; }
+#true-or-not-wireframe .wf-score-summary { margin: 0 0 5px; font-weight: 700; }
+#true-or-not-wireframe .wf-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding-top: 12px; border-top: 1px solid var(--ton-line); }
+#true-or-not-wireframe .wf-stats div { display: grid; gap: 3px; }
+#true-or-not-wireframe .wf-stats span { color: var(--ton-muted); font-size: 10px; }
+#true-or-not-wireframe .wf-stats strong { font-size: 19px; }
+#true-or-not-wireframe .wf-score-popover { position: absolute; z-index: 2; top: 54px; right: 10px; width: min(440px, calc(100% - 20px)); padding: 13px; border: 1px solid var(--ton-line-strong); border-radius: 10px; background: var(--ton-surface); box-shadow: 0 10px 28px #0004; }
+#true-or-not-wireframe .wf-close { min-height: 26px; padding: 1px 7px; }
+#true-or-not-wireframe .wf-rubric { width: 100%; border-collapse: collapse; text-align: left; font-size: 11px; }
+#true-or-not-wireframe .wf-rubric th,
+#true-or-not-wireframe .wf-rubric td { padding: 7px 6px; border-bottom: 1px solid var(--ton-line); }
+#true-or-not-wireframe .wf-rubric th { background: var(--ton-surface-alt); }
+#true-or-not-wireframe .wf-empty-state { display: grid; justify-items: center; gap: 12px; min-height: 330px; padding: 36px 20px; border: 1px solid var(--ton-line); border-radius: 12px; background: var(--ton-surface); text-align: center; }
+#true-or-not-wireframe .wf-empty-symbol { display: grid; width: 58px; height: 58px; place-items: center; border: 1px solid var(--ton-line-strong); border-radius: 50%; font-size: 24px; }
+#true-or-not-wireframe .wf-empty-state h2 { margin: 0; }
+#true-or-not-wireframe .wf-empty-state p { max-width: 440px; margin: 0; color: var(--ton-muted); }
+#true-or-not-wireframe .wf-empty-metrics { display: flex; gap: 24px; margin: 8px 0; font-size: 17px; font-weight: 700; }
+#true-or-not-wireframe .wf-empty-metrics span { display: grid; }
+#true-or-not-wireframe .wf-empty-metrics small { color: var(--ton-muted); font-size: 10px; font-weight: 400; }
+#true-or-not-wireframe .wf-result-row { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 9px; min-height: 38px; border-bottom: 1px solid var(--ton-line); }
+#true-or-not-wireframe .wf-result-row strong { font-size: 12px; }
+#true-or-not-wireframe .wf-source-row { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 9px; min-height: 45px; border-bottom: 1px solid var(--ton-line); }
+#true-or-not-wireframe .wf-source-row > div { display: grid; gap: 5px; }
+#true-or-not-wireframe .wf-relation { min-height: unset; padding: 4px 6px; font-size: 10px; white-space: nowrap; }
+#true-or-not-wireframe .wf-delete-overlay { position: absolute; z-index: 5; inset: 0; display: grid; place-items: center; padding: 16px; background: #0008; }
+#true-or-not-wireframe .wf-delete-dialog { width: min(380px, 100%); padding: 18px; border: 1px solid var(--ton-line-strong); border-radius: 10px; background: var(--ton-surface); }
+#true-or-not-wireframe .wf-delete-dialog p { overflow-wrap: anywhere; color: var(--ton-muted); }
+#true-or-not-wireframe .wf-delete-dialog > div { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+#true-or-not-wireframe .wf-handoff { margin-top: 14px; border: 1px solid var(--ton-line); background: var(--ton-surface); color: var(--ton-text); }
+#true-or-not-wireframe .wf-handoff details { padding: 14px; }
+#true-or-not-wireframe .wf-handoff summary { font-weight: 700; }
+#true-or-not-wireframe .wf-handoff-grid { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 20px; padding-top: 12px; }
+#true-or-not-wireframe .wf-handoff h2 { margin: 0 0 8px; font-size: 14px; }
+#true-or-not-wireframe .wf-screen-list-hint { margin: 0 0 8px; padding: 7px 9px; border-left: 2px solid var(--ton-line-strong); background: var(--ton-surface-alt); color: var(--ton-text); font-size: 11px; }
+#true-or-not-wireframe .wf-handoff ol { display: grid; list-style: none; gap: 6px; margin: 0; padding: 0; }
+#true-or-not-wireframe .wf-handoff-note { margin: 12px 0 0; color: var(--ton-muted); font-size: 11px; }
+#true-or-not-wireframe .wf-action-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11px; text-align: left; }
+#true-or-not-wireframe .wf-action-table th,
+#true-or-not-wireframe .wf-action-table td { padding: 6px; border-bottom: 1px solid var(--ton-line); vertical-align: top; overflow-wrap: anywhere; }
+#true-or-not-wireframe .wf-action-table th:first-child,
+#true-or-not-wireframe .wf-action-table td:first-child { width: 22%; }
+#true-or-not-wireframe .wf-action-table th:nth-child(2),
+#true-or-not-wireframe .wf-action-table td:nth-child(2) { width: 48%; }
+#true-or-not-wireframe .wf-action-table th:last-child,
+#true-or-not-wireframe .wf-action-table td:last-child { width: 30%; }
+#true-or-not-wireframe button:focus-visible,
+#true-or-not-wireframe textarea:focus-visible { outline: 2px solid var(--ton-line-strong); outline-offset: 2px; }
+@media (max-width: 700px) {
+  #true-or-not-wireframe .wf-shell { grid-template-columns: minmax(0, 1fr); }
+  #true-or-not-wireframe .wf-sidebar { gap: 12px; border-right: 0; border-bottom: 1px solid var(--ton-line); }
+  #true-or-not-wireframe .wf-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 0; }
+  #true-or-not-wireframe .wf-saved { gap: 8px; }
+  #true-or-not-wireframe .wf-main { padding: 20px 14px; }
+  #true-or-not-wireframe .wf-review-grid,
+  #true-or-not-wireframe .wf-dashboard-grid,
+  #true-or-not-wireframe .wf-handoff-grid { grid-template-columns: minmax(0, 1fr); }
+  #true-or-not-wireframe .wf-score-panel { grid-column: auto; }
+  #true-or-not-wireframe .wf-page-head { align-items: flex-start; }
+  #true-or-not-wireframe .wf-user-message { width: 100%; }
+  #true-or-not-wireframe .wf-flow-alt { margin-left: 0; }
+}
+</style>
+
+<script>
+const root = document.getElementById("true-or-not-wireframe");
+if (root) {
+  const screens = root.querySelectorAll("[data-screen]");
+  const navButtons = root.querySelectorAll(".wf-nav [data-open-screen]");
+  const previewButtons = root.querySelectorAll("[data-preview-screen]");
+  const deleteDialog = root.querySelector("#wf-delete-confirm");
+  let resultsCreated = false;
+  let pendingConversation = null;
+
+  const showScreen = (requestedName) => {
+    const name = requestedName === "dashboard" ? (resultsCreated ? "results" : "dashboard-empty") : requestedName;
+    if (name === "results") resultsCreated = true;
+    screens.forEach((screen) => { screen.hidden = screen.dataset.screen !== name; });
+
+    const menuName = ["start", "conversation", "claims"].includes(name) ? "start" : ["dashboard-empty", "results"].includes(name) ? "dashboard" : name;
+    navButtons.forEach((button) => {
+      if (button.dataset.openScreen === menuName) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
+    });
+    previewButtons.forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.previewScreen === name)));
+  };
+
+  root.addEventListener("click", (event) => {
+    const button = event.target.closest("button");
+    if (!button || !root.contains(button)) return;
+
+    const nextScreen = button.dataset.openScreen || button.dataset.previewScreen || button.dataset.goScreen;
+    if (nextScreen) { showScreen(nextScreen); return; }
+
+    if (button.hasAttribute("data-delete-chat")) {
+      pendingConversation = button.closest(".wf-conversation");
+      root.querySelector("#wf-delete-chat-name").textContent = button.dataset.chatTitle;
+      deleteDialog.hidden = false;
+      root.querySelector("[data-delete-cancel]").focus();
+      return;
+    }
+
+    if (button.hasAttribute("data-delete-cancel")) {
+      deleteDialog.hidden = true;
+      pendingConversation = null;
+      return;
+    }
+
+    if (button.hasAttribute("data-delete-confirm")) {
+      if (pendingConversation) pendingConversation.remove();
+      deleteDialog.hidden = true;
+      pendingConversation = null;
+      return;
+    }
+
+    if (button.hasAttribute("data-score-toggle")) {
+      const popover = root.querySelector("#wf-score-criteria");
+      popover.hidden = !popover.hidden;
+      button.setAttribute("aria-expanded", String(!popover.hidden));
+      return;
+    }
+
+    if (button.hasAttribute("data-score-close")) {
+      const popover = root.querySelector("#wf-score-criteria");
+      popover.hidden = true;
+      root.querySelector("[data-score-toggle]").setAttribute("aria-expanded", "false");
+      return;
+    }
+
+    if (button.hasAttribute("data-claim")) {
+      root.querySelectorAll("[data-claim]").forEach((claim) => claim.setAttribute("aria-pressed", String(claim === button)));
+      root.querySelector("#wf-selected-claim").textContent = button.dataset.claim;
+    }
+  });
+
+  root.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !deleteDialog.hidden) {
+      deleteDialog.hidden = true;
+      pendingConversation = null;
+    }
+  });
+}
+</script>

@@ -514,7 +514,13 @@ def ground_judgments(
         result["confirmed"] = confirmed
         result["unresolved"] = unresolved
         result["warnings"] = warnings
+        # Keep every validated quote for verdict reconciliation, but expose
+        # only one citation per source page for this claim.
+        emitted_source_ids: set[str] = set()
         for item in valid:
+            if item.source_id in emitted_source_ids:
+                continue
+            emitted_source_ids.add(item.source_id)
             evidence_id = f"e{next_evidence_id}"
             next_evidence_id += 1
             evidence.append(_evidence_dict(item, claim_id, evidence_id, source_sections))
@@ -545,6 +551,7 @@ async def verify_claims(
     api_key: str | None = None,
     client: httpx.AsyncClient,
     provider: LLMProvider | None = None,
+    timeout_seconds: float = 90,
 ) -> dict[str, list[dict[str, Any]]]:
     """Request a source-only judgment and ground it before returning state."""
     claims, sources, source_texts, checkable_claims, verified_sources = _verifiable_inputs(state)
@@ -603,7 +610,9 @@ async def verify_claims(
                 "When dates or conditions cannot be established, write CONDITION_UNKNOWN in unresolved. "
                 "Use the supplied computed values for any arithmetic; never compute percentages or unit conversions yourself. "
                 "Never use search summaries or URLs as evidence. Provide exact contiguous quotations "
-                "of at least 10 characters and valid source IDs. Set comparison to same only when "
+                "of at least 10 characters and valid source IDs. Use at most one evidence quote "
+                "from each source page per claim, choosing its strongest single passage. "
+                "Set comparison to same only when "
                 "Never use search summaries or URLs as evidence. Provide exact contiguous quotations "
                 "of at least 10 characters and valid source IDs. Set comparison to same only when "
                 "date, geography, population, unit, and other material conditions match; use different "
@@ -637,10 +646,13 @@ async def verify_claims(
             },
             schema=JudgmentResponse.model_json_schema(),
             max_output_tokens=12000,
+            timeout_seconds=timeout_seconds,
         )
         parsed = JudgmentResponse.model_validate_json(text)
-    except (ProviderCallError, httpx.HTTPError, ValueError, TypeError, KeyError, ValidationError):
-        raise ValueError("VERIFICATION_FAILED") from None
+    except (ProviderCallError, httpx.HTTPError, TimeoutError) as exc:
+        raise ProviderCallError("Verification provider request failed") from exc
+    except (ValueError, TypeError, KeyError, ValidationError):
+        raise ValueError("MODEL_OUTPUT_INVALID") from None
 
     return ground_judgments(
         claims,
