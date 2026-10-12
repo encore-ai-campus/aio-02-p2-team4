@@ -9,7 +9,7 @@ import { MODEL_OPTIONS } from '../lib/fact-check-contract';
 import type { AgentStage, AnswerBlock, AttachedImage, ContentSummary, FactCheckAnswer, FactCheckRequest, FactCheckResult, FactSource, ModelOption, ModelPreference, ProgressClaim, ProgressSource } from '../lib/fact-check-contract';
 import { sourceDiscoveryLabel } from '../lib/source-discovery';
 import { scoreBand, scoreLabel } from '../lib/fact-score';
-import { formatYoutubePublishedAt, formatYoutubeViewCount, stripYoutubeApiDataForExport, youtubeThumbnailUrl } from '../lib/youtube-context';
+import { stripYoutubeApiDataForExport } from '../lib/youtube-context';
 import { FactCheckError, faviconUrlFor, readFactCheckStream, safeSourceUrl, validResult } from './fact-check-client';
 import { composeAssistantReply, createAnswerCitationDisplayState, modelLabel as modelNameLabel, presentAnswerCitations } from './fact-check-reply';
 import { classifyChatInput, describeHistory, isFollowUpText, isIdentityQuestion, isSummarizeRequest, metaReply } from './chat-intent';
@@ -70,87 +70,6 @@ function formatCheckedAt(value: string) {
 
 function formatCheckedAtInline(value: string) {
   return formatCheckedAt(value).replace('\n', ' · ');
-}
-
-const YOUTUBE_AVATAR_PALETTES = [
-  {background: '#3b3d40', skin: '#c7c7c7', hair: '#242629', shirt: '#77797d'},
-  {background: '#303236', skin: '#b8b9bb', hair: '#17191b', shirt: '#62656a'},
-  {background: '#45474b', skin: '#d0d0d0', hair: '#303236', shirt: '#85878a'},
-  {background: '#35373a', skin: '#c0c1c2', hair: '#202225', shirt: '#707276'},
-  {background: '#414347', skin: '#d4d4d4', hair: '#292b2e', shirt: '#66696e'},
-  {background: '#2e3033', skin: '#bfc0c1', hair: '#101214', shirt: '#7d7f82'},
-];
-const YOUTUBE_AVATAR_HAIR = [
-  'M10 21c0-8 4-13 10-13s10 5 10 13c-3-3-6-4-10-4s-7 1-10 4Z',
-  'M9 22c-1-9 3-14 11-14s12 5 11 14c-2-2-3-5-4-8-4 4-10 6-18 8Z',
-  'M9 20c0-8 4-12 11-12 8 0 11 5 11 12l-4-2c-2-4-5-6-8-6s-7 2-9 8Z',
-  'M10 21c-1-7 3-13 10-13 8 0 11 5 10 13-3-4-5-6-10-6s-7 2-10 6Z',
-  'M9 22c0-9 4-14 11-14 8 0 12 6 11 14-3-2-4-4-5-8-4 4-10 6-17 8Z',
-  'M10 21c0-8 4-13 10-13 7 0 10 5 10 13-2-2-5-4-10-4s-8 2-10 4Z',
-];
-
-function YoutubeCommentAvatar({sourceId, index}: {sourceId: string; index: number}) {
-  let hash = 2166136261;
-  const seed = `${sourceId}:${index}`;
-  for (let offset = 0; offset < seed.length; offset += 1) hash = Math.imul(hash ^ seed.charCodeAt(offset), 16777619);
-  const variant = (hash >>> 0) % YOUTUBE_AVATAR_PALETTES.length;
-  const palette = YOUTUBE_AVATAR_PALETTES[variant];
-  return <span className="youtube-comment-avatar" aria-hidden="true">
-    <svg viewBox="0 0 40 40" focusable="false">
-      <circle cx="20" cy="20" r="20" fill={palette.background}/>
-      <path d="M3 40c1-8 7-12 17-12s16 4 17 12Z" fill={palette.shirt}/>
-      <ellipse cx="20" cy="21" rx="8.7" ry="10.5" fill={palette.skin}/>
-      <path d={YOUTUBE_AVATAR_HAIR[variant]} fill={palette.hair}/>
-      {variant === 1 || variant === 4 ? <path d="M10 19v11l4 2V20m16-1v12l-4 1V20" fill={palette.hair}/> : null}
-      <circle cx="17" cy="22" r=".8" fill="#333538"/>
-      <circle cx="23" cy="22" r=".8" fill="#333538"/>
-      <path d="M18 26q2 1.5 4 0" fill="none" stroke="#77797b" strokeWidth=".9" strokeLinecap="round"/>
-    </svg>
-  </span>;
-}
-
-function YoutubeCommentContext({source}: {source: FactSource}) {
-  if (source.sourceType !== '유튜브') return null;
-  const statusText = source.youtubeDataStatus === 'collected'
-    ? source.youtubeComments.length ? '수집 완료' : '댓글 없음'
-    : source.youtubeDataStatus === 'not_configured'
-      ? 'API 키 미설정'
-      : '댓글 조회 불가';
-  return <details className="youtube-comment-context">
-    <summary><span>공개 댓글 {source.youtubeComments.length}개 · 의견 맥락</span><span>{statusText}</span></summary>
-    <p className="source-caption">최대 10개의 공개 댓글입니다. 대표 의견을 뜻하지 않으며 AI 판정과 인용 근거에 사용하지 않습니다. 왼쪽 그림은 실제 작성자 사진이 아닌 임의 생성 이미지입니다.</p>
-    {source.youtubeDataStatus === 'collected' && source.youtubeComments.length
-      ? <ol>{source.youtubeComments.map((comment, index) => <li className="youtube-comment-row" key={`${source.id}-${index}`}><YoutubeCommentAvatar sourceId={source.id} index={index}/><span className="youtube-comment-text">{comment}</span></li>)}</ol>
-      : <p className="youtube-empty">{source.youtubeDataStatus === 'not_configured'
-        ? 'backend/.env에 YOUTUBE_API_KEY를 설정하면 공개 댓글을 조회할 수 있습니다.'
-        : source.youtubeDataStatus === 'collected'
-          ? '표시할 공개 댓글이 없습니다.'
-          : '댓글이 비활성화되었거나 API에서 가져오지 못했습니다.'}</p>}
-  </details>;
-}
-
-function YoutubeThumbnail({source}: {source: FactSource}) {
-  const [failed, setFailed] = useState(false);
-  const thumbnailUrl = youtubeThumbnailUrl(source.url);
-  const title = source.youtubeTitle || source.title;
-  const image = thumbnailUrl && !failed
-    ? <img className="youtube-thumbnail" src={thumbnailUrl} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)}/>
-    : <span className="youtube-thumbnail-fallback" aria-hidden="true">미리보기 없음</span>;
-  const href = safeSourceUrl(source.url);
-
-  return href
-    ? <a className="youtube-thumbnail-frame" href={href} target="_blank" rel="noopener noreferrer" aria-label={`${title} 영상 보기`}>{image}</a>
-    : <div className="youtube-thumbnail-frame">{image}</div>;
-}
-
-function YoutubeVideoMetadata({source}: {source: FactSource}) {
-  const publishedAt = formatYoutubePublishedAt(source.youtubePublishedAt);
-  const viewCount = formatYoutubeViewCount(source.youtubeViewCount);
-  return <div className="youtube-video-metadata" aria-label="유튜브 영상 정보">
-    <span><small>채널</small>{source.youtubeChannelTitle || '확인 불가'}</span>
-    <span><small>게시일</small>{publishedAt || '확인 불가'}</span>
-    <span><small>조회수</small>{viewCount || '확인 불가'}</span>
-  </div>;
 }
 
 function TrustIndex({score, claimCount, sourceCount, evidenceCount, warningCount, claims, selectedClaimId, onSelectClaim}: {score: number | null; claimCount: number; sourceCount: number; evidenceCount: number; warningCount: number; claims: readonly Claim[]; selectedClaimId?: string; onSelectClaim: (id: string) => void}) {
@@ -554,8 +473,6 @@ export default function FactCheckDashboard() {
   const selectedEvidence = selected && liveResult ? liveResult.evidence.filter(evidence => evidence.claimId === selected.id && selected.evidenceIds.includes(evidence.id)) : [];
   const selectedSourceIds = new Set(snapshot?.demo ? sourceDocs.map(source => source.id) : selectedEvidence.map(evidence => evidence.sourceId));
   const selectedLiveClaim = selected && liveResult ? liveResult.claims.find(claim => claim.id === selected.id) : null;
-  const youtubeSources = liveResult?.sources.filter(source => source.sourceType === '유튜브') ?? [];
-  const otherSources = liveResult?.sources.filter(source => source.sourceType !== '유튜브') ?? [];
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1105,8 +1022,6 @@ export default function FactCheckDashboard() {
               </div>
               <Panel className="evidence-panel"><div className="panel-top"><h3 className="scramble-panel-title"><Icon name="lens" size={18}/><ScrambleText>선택한 주장과 근거</ScrambleText></h3><span>{snapshot.demo ? '예시 비교' : '수집된 원문 비교'}</span></div><AnimatePresence mode="wait" initial={false}><motion.div className="detail-content" key={selected?.id || 'empty'} initial={reduce ? false : {opacity: 0, y: 5}} animate={{opacity: 1, y: 0}} exit={{opacity: 0}} transition={{duration: reduce ? 0 : 0.18}}>{selected ? <>
                 <div className="result-overview"><span className="article-kicker">선택한 주장</span><h3>{selected.quote}</h3><Badge claim={selected}/><p>{selected.summary}</p></div>
-                {!snapshot.demo && snapshot.claims.length > 1 && selected.evidenceIds.length !== 1 && !selectedEvidence.length && otherSources.length ? <div className="source-candidate-list"><p className="evidence-caution">출처별 검색 경로와 순위를 확인하세요. Google 자연검색 순위는 그렇게 표시된 출처에만 해당하고, 아직 선택한 주장과 직접 대조된 인용은 아닙니다.</p>{otherSources.map((source, index) => {const href = safeSourceUrl(source.url); return <article className="source-card" ref={spotlight} key={source.id}><div className="source-card-top"><span className="source-index">{String(index + 1).padStart(2, '0')}</span><span className="source-kind">{source.sourceType || '검색 출처'}</span><span className="source-verified">{source.accessStatus === 'verified' ? '원문 확인' : '접근 불가'}</span></div>{href ? <a className="source-title-link" href={href} target="_blank" rel="noopener noreferrer">{source.title} <Icon name="arrow" size={14}/></a> : <strong>{source.title}</strong>}<span className="source-publisher">{source.publisher} · {source.publishedAt || '발행일 미확인'}</span><p className="source-caption">{sourceDiscoveryLabel(source)} · 원문 인용이 연결되기 전에는 판정 근거로 사용하지 않습니다.</p></article>;})}</div> : null}
-                {!snapshot.demo && snapshot.claims.length > 1 && youtubeSources.length > 0 ? <section className="youtube-context-list" aria-label="유튜브 영상 정보와 공개 댓글"><div className="source-heading"><h4><ScrambleText>유튜브 영상 정보·공개 댓글</ScrambleText></h4><span>참고 맥락 · 판정 근거 아님</span></div>{youtubeSources.map(source => {const href = safeSourceUrl(source.url); return <article className="youtube-context-card" key={source.id}><div className="youtube-context-header"><YoutubeThumbnail source={source}/><div className="youtube-context-copy">{href ? <a className="source-title-link" href={href} target="_blank" rel="noopener noreferrer">{source.youtubeTitle || source.title} <Icon name="arrow" size={14}/></a> : <strong>{source.youtubeTitle || source.title}</strong>}<YoutubeVideoMetadata source={source}/></div></div><YoutubeCommentContext source={source}/></article>;})}</section> : null}
                 {!snapshot.demo && selectedLiveClaim && <div className="detail-blocks"><div><h4><ScrambleText>확인된 내용</ScrambleText></h4>{selectedLiveClaim.confirmed.length ? <ul>{selectedLiveClaim.confirmed.map((text, index) => <li key={index}>{text}</li>)}</ul> : <p>직접 확인된 내용이 없습니다.</p>}</div><div><h4><ScrambleText>남은 불확실성</ScrambleText></h4>{selectedLiveClaim.unresolved.length ? <ul>{selectedLiveClaim.unresolved.map((text, index) => <li key={index}>{text}</li>)}</ul> : <p>현재 기록된 불확실성이 없습니다.</p>}</div>{selectedLiveClaim.warnings.length > 0 && <div><h4><ScrambleText>주장별 주의사항</ScrambleText></h4><ul>{selectedLiveClaim.warnings.map((text, index) => <li key={index}>{text}</li>)}</ul></div>}</div>}
               </> : <div className="empty-evidence"><Icon name="lens" size={27}/><h4><ScrambleText>주장을 선택해 주세요</ScrambleText></h4><p>위의 주장 카드를 선택하면 연결된 출처와 인용이 표시됩니다.</p></div>}</motion.div></AnimatePresence></Panel>
             </div></>
