@@ -64,6 +64,18 @@ function hasEnglishText(value: string) {
   return /[A-Za-z]/.test(value);
 }
 
+function formatCheckedAt(value: string) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '시간 확인 불가';
+  const time = new Intl.DateTimeFormat('ko-KR', {timeZone: 'Asia/Seoul', hour: 'numeric', minute: '2-digit', hour12: true}).format(date);
+  const day = new Intl.DateTimeFormat('en-CA', {timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit'}).format(date);
+  return `${time}\n${day}`;
+}
+
+function formatCheckedAtInline(value: string) {
+  return formatCheckedAt(value).replace('\n', ' · ');
+}
+
 const YOUTUBE_AVATAR_PALETTES = [
   {background: '#3b3d40', skin: '#c7c7c7', hair: '#242629', shirt: '#77797d'},
   {background: '#303236', skin: '#b8b9bb', hair: '#17191b', shirt: '#62656a'},
@@ -946,7 +958,7 @@ export default function FactCheckDashboard() {
   }
 
   function restoredMessage(item:StoredMessage):ChatMessage {
-    if(item.snapshot){const result=restoreSnapshot(item.snapshot);const jev=item.snapshot.scoreMode==='jev'||result.model==='jev-latest';return {id:item.id,role:item.role,...composeAssistantReply(result,jev?result:null),meta:`과거 검증 결과 · ${result.checkedAt}`};}
+    if(item.snapshot){const result=restoreSnapshot(item.snapshot);const jev=item.snapshot.scoreMode==='jev'||result.model==='jev-latest';return {id:item.id,role:item.role,...composeAssistantReply(result,jev?result:null),meta:`과거 검증 결과 · ${formatCheckedAt(result.checkedAt)}`};}
     return {id:item.id,role:item.role,text:item.content,...(item.status==='failed'?{tone:'error' as const}:{}),meta:item.status==='cancelled'?'중단된 요청':undefined};
   }
 
@@ -954,7 +966,7 @@ export default function FactCheckDashboard() {
     const restored=page.messages.map(restoredMessage);
     setMessages(current=>earlier?[...restored,...current.filter(item=>!restored.some(old=>old.id===item.id))]:restored.length?restored:[WELCOME_MESSAGE]);
     const last=[...page.messages].reverse().find(item=>item.snapshot)?.snapshot;
-    if(last&&(!earlier||!liveResult)){const result=restoreSnapshot(last);setLiveResult(result);dispatch({type:'load',snapshot:result});setNotice(`과거 검증 결과입니다 (${result.checkedAt}). 현재 사실로 재검증한 결과가 아닙니다.`);}
+    if(last&&(!earlier||!liveResult)){const result=restoreSnapshot(last);setLiveResult(result);dispatch({type:'load',snapshot:result});setNotice(`과거 검증 결과입니다 (${formatCheckedAtInline(result.checkedAt)}). 현재 사실로 재검증한 결과가 아닙니다.`);}
     else if(!earlier){setLiveResult(null);dispatch({type:'reset'});setNotice('저장된 대화를 불러왔습니다. 저장을 켜면 이어지는 대화도 저장됩니다.');}
   }
 
@@ -1085,7 +1097,7 @@ export default function FactCheckDashboard() {
         <section id="review" className="review-section" aria-labelledby="review-heading">
           <div className="review-heading dashboard-heading"><div><span className="section-kicker">검증 대시보드</span><h2 id="review-heading"><ScrambleText>근거와 함께 확인하세요.</ScrambleText></h2><p>주장별 신뢰지수, 확인된 인용, 출처의 관계를 한 흐름으로 살펴보세요.</p></div><button className="secondary-button export-button" disabled={!snapshot || busy} onClick={download}><Icon name="download" size={16}/><span>{snapshot?.demo ? '예시 내보내기' : '결과 내보내기'}</span></button></div>
           {snapshot ? <>
-            <div className="dashboard-meta"><span className="document-title"><Icon name={snapshot.demo ? 'book' : 'file'} size={16}/>{snapshot.demo ? '합성 예시 · 외부 전송 없음' : '직접 입력한 원문 · 실제 검증'}</span><div><span>{snapshot.claims.length}개 주장</span><span>{sourceCount}개 출처</span><span>{snapshot.demo ? '시연용 데이터' : liveResult?.checkedAt || '검증 시점 기록됨'}</span></div></div>
+            <div className="dashboard-meta"><span className="document-title"><Icon name={snapshot.demo ? 'book' : 'file'} size={16}/>{snapshot.demo ? '합성 예시 · 외부 전송 없음' : '직접 입력한 원문 · 실제 검증'}</span><div><span>{snapshot.claims.length}개 주장</span><span>{sourceCount}개 출처</span>{snapshot.demo ? <span>시연용 데이터</span> : liveResult?.checkedAt ? <time className="dashboard-checked-at" dateTime={liveResult.checkedAt}>{formatCheckedAt(liveResult.checkedAt)}</time> : <span>검증 시점 기록됨</span>}</div></div>
             <div className="dashboard-top-grid">
               <Panel className="trust-panel"><TrustIndex score={trustScore} claimCount={snapshot.claims.length} sourceCount={sourceCount} evidenceCount={evidenceCount} warningCount={warningCount} claims={snapshot.claims} selectedClaimId={selected?.id} onSelectClaim={select}/></Panel>
             </div>
