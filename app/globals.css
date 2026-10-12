@@ -276,7 +276,6 @@ button, p, h3, dd { overflow-wrap: anywhere; }
 .dashboard-checked-at { white-space: pre-line; line-height: 1.3; }
 .document-title { display: inline-flex; align-items: center; gap: 8px; }
 .document-title svg { color: var(--accent); }
-.dashboard-top-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 4px; }
 .trust-panel { position: relative; z-index: 1; min-height: 100%; overflow: visible; }
 .trust-index { position: relative; padding: 23px 24px 20px; }
 .trust-index-head { position: relative; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
@@ -542,7 +541,6 @@ button, p, h3, dd { overflow-wrap: anywhere; }
   .line-sidebar__index, .line-sidebar__text { display: none; }
   .line-sidebar__icon { display: grid; place-items: center; }
   .line-sidebar__marker, .line-sidebar--markers .line-sidebar__item:not(:last-child)::after { display: none; }
-  .dashboard-top-grid { grid-template-columns: 1fr; }
 }
 
 @media (min-width: 721px) and (max-width: 960px) {
