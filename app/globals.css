@@ -278,7 +278,7 @@ button, p, h3, dd { overflow-wrap: anywhere; }
 .document-title svg { color: var(--accent); }
 .trust-panel { position: relative; z-index: 1; min-height: 100%; overflow: visible; }
 .trust-index { position: relative; padding: 23px 24px 20px; }
-.trust-index-head { position: relative; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.trust-index-head { position: relative; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .trust-index-head .fact-score-guide { position: static; }
 .trust-index-head .fact-score-guide-popover { top: calc(100% + 12px); right: 0; bottom: auto; width: min(520px, calc(100vw - 32px), 100%); box-sizing: border-box; }
 .trust-index-head h3 { margin-top: 7px; font-size: 18px; }
