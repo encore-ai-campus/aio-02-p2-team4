@@ -155,10 +155,10 @@ function TrustIndex({score, claimCount, sourceCount, evidenceCount, warningCount
         <FactScoreGuide score={score}/>
       </div>
     {claims.length > 1 && <div className="claim-score-control" onMouseEnter={() => {if (!claimMenuPinned) setClaimMenuOpen(true);}} onMouseLeave={() => {if (!claimMenuPinned) setClaimMenuOpen(false);}} onFocus={() => setClaimMenuOpen(true)} onBlur={event => {if (!event.currentTarget.contains(event.relatedTarget as Node | null) && !claimMenuPinned) setClaimMenuOpen(false);}}>
-      <button type="button" className="claim-score-trigger" aria-haspopup="true" aria-expanded={claimMenuOpen} onClick={() => {const nextPinned = !claimMenuPinned; setClaimMenuPinned(nextPinned); setClaimMenuOpen(nextPinned);}}><Icon name="grid" size={15}/>주장별 점수</button>
+      <button type="button" className={`claim-score-trigger ${claimMenuPinned ? 'is-pinned' : ''}`} aria-haspopup="true" aria-expanded={claimMenuOpen} aria-pressed={claimMenuPinned} onClick={() => {const nextPinned = !claimMenuPinned; setClaimMenuPinned(nextPinned); setClaimMenuOpen(nextPinned);}}><Icon name="grid" size={15}/>주장별 점수</button>
       {claimMenuOpen && <div className="claim-score-popover" id="claim-score-popover" role="region" aria-label="주장별 점수">
         {claims.map((claim, index) => <button type="button" key={claim.id} className={`claim-score-option ${selectedClaimId === claim.id ? 'is-selected' : ''}`} aria-pressed={selectedClaimId === claim.id} onClick={() => {onSelectClaim(claim.id); if (!claimMenuPinned) setClaimMenuOpen(false);}}>
-          <span className="claim-score-option-index">주장 {String(index + 1).padStart(2, '0')}</span><Badge claim={claim}/><span className="claim-score-option-quote">{claim.quote}</span><span className="claim-score-option-value">{claim.factScore}<small>점</small></span>
+          <span className="claim-score-option-index">주장 {String(index + 1).padStart(2, '0')}</span><span className="claim-score-option-verdict"><span className="claim-score-option-verdict-label">판정</span><Badge claim={claim}/></span><span className="claim-score-option-quote">{claim.quote}</span><span className="claim-score-option-value">{claim.factScore}<small>점</small></span>
         </button>)}
       </div>}
     </div>}
