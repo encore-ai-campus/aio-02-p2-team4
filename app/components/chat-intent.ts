@@ -56,7 +56,7 @@ export function isIdentityQuestion(text: string): boolean {
 
 export function classifyChatInput(
   text: string,
-  options: {hasAttachment: boolean},
+  options: {hasAttachment: boolean; providerAuthFailed?: boolean},
 ): ChatIntent {
   const trimmed = text.trim();
   if (!trimmed) return {kind: 'clarify'};
@@ -66,7 +66,7 @@ export function classifyChatInput(
     }
     if (HELP_PATTERNS.some(pattern => pattern.test(trimmed))) return {kind: 'meta', topic: 'help'};
   }
-  if (EXPLICIT_VERIFY_PATTERNS.some(pattern => pattern.test(trimmed)) && !FOLLOW_UP_REFERENCES.test(trimmed)) return {kind: 'verify'};
+  if (!options.providerAuthFailed && EXPLICIT_VERIFY_PATTERNS.some(pattern => pattern.test(trimmed)) && !FOLLOW_UP_REFERENCES.test(trimmed)) return {kind: 'verify'};
   if (options.hasAttachment || trimmed.length > 60) return {kind: 'clarify'};
   if (!SHIELD_GUARD.test(trimmed) && CLAIM_PATTERNS.some(pattern => pattern.test(trimmed))) return {kind: 'clarify'};
   for (const group of LATE_META) {

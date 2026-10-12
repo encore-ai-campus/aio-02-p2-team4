@@ -47,7 +47,11 @@ export async function POST(req: Request) {
   try {
     const signal=AbortSignal.any([req.signal,AbortSignal.timeout(45000)]);
     const upstream=await fetch(backend('/api/intent'),{method:'POST',headers:backendHeaders({'Content-Type':'application/json'}),body:JSON.stringify(body),signal,redirect:'error',cache:'no-store'});
-    if(!upstream.ok){await upstream.body?.cancel();return error(503,'INTENT_FAILED','의도 파악에 실패했습니다.');}
+    if(!upstream.ok){
+      const failure=JSON.parse(await limitedText(upstream,16000,signal));
+      if(failure?.code==='PROVIDER_AUTH_FAILED')return error(503,'PROVIDER_AUTH_FAILED','선택한 모델의 인증에 실패했습니다. 서버 API 키와 접근 권한을 확인해 주세요.');
+      return error(503,'INTENT_FAILED','의도 파악에 실패했습니다.');
+    }
     const value = readGateDecision(JSON.parse(await limitedText(upstream, 16000, signal)));
     return Response.json(value,{headers:{'Cache-Control':'no-store'}});
   }catch{return error(503,'INTENT_FAILED','의도 파악에 실패했습니다.');}

@@ -632,7 +632,11 @@ export default function FactCheckDashboard() {
   async function requestGate(text: string, model: ModelPreference, consent: true, signal: AbortSignal): Promise<GateDecision> {
     requireExternalConsent();
     const response = await fetch('/api/intent', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({text, focus: focus.trim(), image: image ? {mime: image.mime, data: image.data} : pendingMaterial?.image ?? null, linkUrl: detectedLink, context: gateContext(), consent, modelPreference: model}), signal});
-    if (!response.ok) throw new Error('INTENT_FAILED');
+    if (!response.ok) {
+      const failure = await response.json().catch(() => null);
+      if (failure?.code === 'PROVIDER_AUTH_FAILED') throw new FactCheckError('PROVIDER_AUTH_FAILED', '선택한 모델의 인증에 실패했습니다. 서버 API 키와 접근 권한을 확인해 주세요.');
+      throw new Error('INTENT_FAILED');
+    }
     const value: unknown = await response.json();
     requireExternalConsent();
     return readGateDecision(value);
@@ -725,6 +729,7 @@ export default function FactCheckDashboard() {
         : message));
     };
     let gate: GateDecision | null = null;
+    let gateFailure: unknown = null;
     if (identityOnly) {
       removeThinking();
       const label = modelSelection === 'auto' ? 'Auto' : (MODEL_OPTIONS.find(model => model.id === modelSelection)?.label ?? modelSelection);
@@ -737,7 +742,7 @@ export default function FactCheckDashboard() {
     {
       try {
         gate = await requestGate(draft.trim(), modelPreference, consent, controller.signal);
-      } catch { gate = null; }
+      } catch (error) { gate = null; gateFailure = error; }
       if (generation.current !== current || controller.signal.aborted) {release(); return;}
     }
     if (gate && gate.action !== 'verify') {
@@ -767,7 +772,7 @@ export default function FactCheckDashboard() {
       return;
     }
     if (!gate) {
-      const fallback = classifyChatInput(draft, {hasAttachment: !!(image || detectedLink)});
+      const fallback = classifyChatInput(draft, {hasAttachment: !!(image || detectedLink), providerAuthFailed: gateFailure instanceof FactCheckError && gateFailure.code === 'PROVIDER_AUTH_FAILED'});
       if (fallback.kind === 'meta') {
         removeThinking();
         appendReply({role: 'assistant', text: fallback.topic === 'history' ? describeHistory(messages, liveResult, DEMO_TEXT) : metaReply(fallback.topic)});
@@ -779,8 +784,10 @@ export default function FactCheckDashboard() {
         gate = {action: 'verify', target: 'current', reply: null, focus: null};
       } else {
         removeThinking();
-        appendReply({role: 'assistant', text: '요청을 분류하지 못했습니다. 내용 설명을 원하시는지, 사실 여부 검증을 원하시는지 알려주세요.'});
-        setNotice('요청을 분류하지 못했습니다. 검증을 시작하지 않았습니다.');
+        const failureMessage = gateFailure instanceof FactCheckError && gateFailure.code === 'PROVIDER_AUTH_FAILED'
+          ? gateFailure.message : '요청 의도 파악 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.';
+        appendReply({role: 'assistant', text: failureMessage, tone: 'error'});
+        setNotice(`${failureMessage} 검증을 시작하지 않았습니다.`);
         clarificationInput.current = pendingMaterial ?? {epoch: storageEpoch, text: draft, focus, linkUrl: detectedLink, image: image ? {mime: image.mime, data: image.data} : null};
         release(); return;
       }

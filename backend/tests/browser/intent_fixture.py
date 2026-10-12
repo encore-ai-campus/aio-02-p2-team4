@@ -45,7 +45,9 @@ async def intent(request: Request):
     requests.append({'path': 'intent', 'text': body['text'], 'hasImage': bool(body.get('image')),
                      'linkUrl': body.get('linkUrl'), 'focus': body.get('focus'), 'context': body.get('context', {})})
     text = body['text']
-    if text in {'분류 실패 재현', 'ㅎㅇ', '개새야'}:
+    if text in {'2024년 한국 합계출산율은 0.75명이다.', '이 기사가 사실인지 확인해줘: 경제가 성장했다'}:
+        return JSONResponse({'code': 'PROVIDER_AUTH_FAILED'}, status_code=502)
+    if text in {'분류 실패 재현', 'ㅎㅇ', '개새야', '경제 성장 주장이 사실인지 확인해줘: 분류 장애 재현'}:
         return JSONResponse({'code': 'AGENT_FAILED'}, status_code=502)
     if text == '분류 중단 재현':
         await asyncio.sleep(20)

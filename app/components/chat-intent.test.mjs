@@ -3,6 +3,13 @@ import assert from 'node:assert/strict';
 import {classifyChatInput, describeHistory, isIdentityQuestion, isSummarizeRequest, metaReply} from './chat-intent.ts';
 import * as intent from './chat-intent.ts';
 
+test('known provider authentication failure blocks explicit verification fallback', () => {
+  const claim = '정빛낙 국방부대변인이 예술·체육요원을 포함한 보충역 제도의 단계적 감축 및 궁극적인 폐지 방안을 국방개혁 기본계획에 반영해 추진하겠다는 게 사실인지?';
+  assert.deepEqual(classifyChatInput(claim, {hasAttachment:false,providerAuthFailed:true}), {kind:'clarify'});
+  assert.deepEqual(classifyChatInput('이 내용이 맞는지 확인해줘', {hasAttachment:true,providerAuthFailed:true}), {kind:'clarify'});
+  assert.deepEqual(classifyChatInput(claim, {hasAttachment:false}), {kind:'verify'});
+});
+
 test('routes meta questions away from verification', () => {
   const previous = {hasPrevious: true, hasAttachment: false};
   assert.deepEqual(classifyChatInput('너 지금 나랑 대화한 기록 볼수있어?', previous), {kind: 'meta', topic: 'history'});

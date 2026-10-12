@@ -37,6 +37,10 @@ class ProviderCallError(RuntimeError):
     """A provider attempt failed and the next configured provider may retry."""
 
 
+class ProviderAuthenticationError(ProviderCallError):
+    """공급자의 인증·권한 거절을 비밀정보 없이 구분합니다."""
+
+
 def openai_provider(api_key: str | None) -> LLMProvider:
     return LLMProvider("openai", "gpt-6-luna", "max", api_key or "")
 
@@ -275,7 +279,12 @@ def _search_payload(
 
 
 def _response_json(response: httpx.Response, *, chat_completion: bool = False) -> dict[str, Any]:
-    response.raise_for_status()
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        if response.status_code in {401, 403}:
+            raise ProviderAuthenticationError("Provider authentication failed") from exc
+        raise
     if len(response.content) > _MAX_RESPONSE_BYTES:
         raise ProviderCallError("Response too large")
     data = response.json()

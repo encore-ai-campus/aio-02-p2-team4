@@ -75,7 +75,9 @@ async def classify_intent(
             max_output_tokens=4000,
         )
         parsed = IntentDecision.model_validate_json(raw)
-    except (ProviderCallError, httpx.HTTPError, ValueError, TypeError, KeyError) as exc:
+    except ProviderCallError:
+        raise
+    except (httpx.HTTPError, ValueError, TypeError, KeyError) as exc:
         raise ProviderCallError("Invalid intent output") from exc
     reply = parsed.reply.strip()
     if parsed.action in {"reply", "clarify"} and not reply:

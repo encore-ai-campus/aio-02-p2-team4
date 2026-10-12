@@ -87,3 +87,32 @@ test('intent proxy accepts a bounded image and rejects oversized streamed input 
     assert.equal(forwarded.length, 1);
   } finally {globalThis.fetch = saved;}
 });
+
+test('intent proxy preserves authentication failure but never forwards provider details', async () => {
+  const {POST} = await import('../../api/intent/route.ts');
+  const saved = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({code:'PROVIDER_AUTH_FAILED',message:'secret-test-only'}, {status:502});
+  try {
+    const response = await POST(request('intent', {text:'검증할 주장',consent:true}));
+    assert.equal(response.status,503);
+    const body = await response.json();
+    assert.equal(body.code,'PROVIDER_AUTH_FAILED');
+    assert.match(body.message,/인증/);
+    assert.doesNotMatch(JSON.stringify(body),/secret-test-only|내용 설명/);
+  } finally {globalThis.fetch = saved;}
+});
+
+test('intent proxy keeps unknown and malformed failures generic without leaking their bodies', async () => {
+  const {POST} = await import('../../api/intent/route.ts');
+  const saved = globalThis.fetch;
+  try {
+    for (const upstream of [Response.json({code:'UNKNOWN',message:'secret-test-only'},{status:502}), new Response('secret-test-only',{status:502})]) {
+      globalThis.fetch = async () => upstream;
+      const response = await POST(request('intent', {text:'검증할 주장',consent:true}));
+      assert.equal(response.status,503);
+      const body = await response.json();
+      assert.equal(body.code,'INTENT_FAILED');
+      assert.doesNotMatch(JSON.stringify(body),/secret-test-only/);
+    }
+  } finally {globalThis.fetch = saved;}
+});
