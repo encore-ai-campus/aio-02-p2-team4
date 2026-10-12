@@ -4,6 +4,7 @@ export type { GateDecision } from '../lib/chat-intent-contract';
 
 export type ChatIntent =
   | {kind: 'meta'; topic: 'history' | 'greeting' | 'thanks' | 'identity' | 'control' | 'tease' | 'smalltalk' | 'help'}
+  | {kind: 'verify'}
   | {kind: 'clarify'};
 
 type MetaTopic = 'history' | 'greeting' | 'thanks' | 'identity' | 'control' | 'tease' | 'smalltalk' | 'help';
@@ -15,6 +16,10 @@ const CLAIM_PATTERNS = [
   /맞는지/, /맞아/, /맞니/, /틀린지/, /틀렸/, /틀리니/,
   /확인/, /검증/, /주장/, /근거/, /출처/, /카더라/, /라던데/, /라는데/,
 ];
+const EXPLICIT_VERIFY_PATTERNS = [
+  /사실인지/, /사실 여부/, /진짜인지/, /정말 사실/, /맞는지/, /틀린지/, /거짓인지/, /팩트\s*체크/,
+];
+const FOLLOW_UP_REFERENCES = /기억해|그거|그것|이전|아까|방금|앞서|위에/;
 const SHIELD_GUARD = /하지 ?마|그만해|닥쳐|조용히/;
 
 const IDENTITY_PATTERNS = [/너는 누구/, /너가 누구/, /너는 뭐야/, /너가 뭐야/, /자기소개/, /뭐하는/, /누구야$/, /무슨 ?모델/, /어떤 모델/, /모델명/];
@@ -54,11 +59,15 @@ export function classifyChatInput(
   options: {hasAttachment: boolean},
 ): ChatIntent {
   const trimmed = text.trim();
-  if (!trimmed || options.hasAttachment || trimmed.length > 60) return {kind: 'clarify'};
-  for (const group of EARLY_META) {
-    if (group.patterns.some(pattern => pattern.test(trimmed))) return {kind: 'meta', topic: group.topic};
+  if (!trimmed) return {kind: 'clarify'};
+  if (!options.hasAttachment && trimmed.length <= 60) {
+    for (const group of EARLY_META) {
+      if (group.patterns.some(pattern => pattern.test(trimmed))) return {kind: 'meta', topic: group.topic};
+    }
+    if (HELP_PATTERNS.some(pattern => pattern.test(trimmed))) return {kind: 'meta', topic: 'help'};
   }
-  if (HELP_PATTERNS.some(pattern => pattern.test(trimmed))) return {kind: 'meta', topic: 'help'};
+  if (EXPLICIT_VERIFY_PATTERNS.some(pattern => pattern.test(trimmed)) && !FOLLOW_UP_REFERENCES.test(trimmed)) return {kind: 'verify'};
+  if (options.hasAttachment || trimmed.length > 60) return {kind: 'clarify'};
   if (!SHIELD_GUARD.test(trimmed) && CLAIM_PATTERNS.some(pattern => pattern.test(trimmed))) return {kind: 'clarify'};
   for (const group of LATE_META) {
     if (group.patterns.some(pattern => pattern.test(trimmed))) return {kind: 'meta', topic: group.topic};

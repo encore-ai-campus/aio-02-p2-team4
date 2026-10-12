@@ -775,11 +775,15 @@ export default function FactCheckDashboard() {
         setDraft(''); setFocus(''); setImage(null); release();
         return;
       }
-      removeThinking();
-      appendReply({role: 'assistant', text: '요청을 분류하지 못했습니다. 내용 설명을 원하시는지, 사실 여부 검증을 원하시는지 알려주세요.'});
-      setNotice('요청을 분류하지 못했습니다. 검증을 시작하지 않았습니다.');
-      clarificationInput.current = pendingMaterial ?? {epoch: storageEpoch, text: draft, focus, linkUrl: detectedLink, image: image ? {mime: image.mime, data: image.data} : null};
-      release(); return;
+      if (fallback.kind === 'verify') {
+        gate = {action: 'verify', target: 'current', reply: null, focus: null};
+      } else {
+        removeThinking();
+        appendReply({role: 'assistant', text: '요청을 분류하지 못했습니다. 내용 설명을 원하시는지, 사실 여부 검증을 원하시는지 알려주세요.'});
+        setNotice('요청을 분류하지 못했습니다. 검증을 시작하지 않았습니다.');
+        clarificationInput.current = pendingMaterial ?? {epoch: storageEpoch, text: draft, focus, linkUrl: detectedLink, image: image ? {mime: image.mime, data: image.data} : null};
+        release(); return;
+      }
     }
     if ((jevMode && jevConfigured !== true) || (!jevMode && configured === false)) {removeThinking(); setNotice(configurationHelp); release(); return;}
     const selected = verificationInput(gate, {text: draft, focus, linkUrl: detectedLink, image: image ? {mime: image.mime, data: image.data} : null}, pendingMaterial?.text ?? liveResult?.text ?? null, pendingMaterial ?? undefined);

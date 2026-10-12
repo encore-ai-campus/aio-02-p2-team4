@@ -39,20 +39,27 @@ test('handles speech style, provocation, small talk and help locally', () => {
   assert.deepEqual(classifyChatInput('뭐해', previous), {kind: 'meta', topic: 'smalltalk'});
   assert.deepEqual(classifyChatInput('밥 먹었어?', previous), {kind: 'meta', topic: 'smalltalk'});
   assert.deepEqual(classifyChatInput('뭘 할 수 있어?', previous), {kind: 'meta', topic: 'help'});
-  assert.deepEqual(classifyChatInput('이거 진짜인지 알려줘', previous), {kind: 'clarify'});
-  assert.deepEqual(classifyChatInput('이거 진짜인지 알려줘', {hasPrevious: false, hasAttachment: false}), {kind: 'clarify'});
+  assert.deepEqual(classifyChatInput('이거 진짜인지 알려줘', previous), {kind: 'verify'});
+  assert.deepEqual(classifyChatInput('이거 진짜인지 알려줘', {hasPrevious: false, hasAttachment: false}), {kind: 'verify'});
   assert.deepEqual(classifyChatInput('ㅎㅇ', previous), {kind: 'meta', topic: 'greeting'});
   assert.deepEqual(classifyChatInput('개새야', previous), {kind: 'meta', topic: 'tease'});
-  assert.deepEqual(classifyChatInput('ㅎㅇ 이 기사가 사실인지 확인해줘', previous), {kind: 'clarify'});
+  assert.deepEqual(classifyChatInput('ㅎㅇ 이 기사가 사실인지 확인해줘', previous), {kind: 'verify'});
 });
 
 test('a gate failure does not verify substantive inputs or attachments', () => {
   const previous = {hasPrevious: true, hasAttachment: false};
   assert.deepEqual(classifyChatInput('마크저커버그는 뱀파이어인가', previous), {kind: 'clarify'});
-  assert.deepEqual(classifyChatInput('이 기사가 사실인지 확인해줘: 경제가 성장했다', previous), {kind: 'clarify'});
+  assert.deepEqual(classifyChatInput('이 기사가 사실인지 확인해줘: 경제가 성장했다', previous), {kind: 'verify'});
   assert.deepEqual(classifyChatInput('기억해? 이 문장이 맞는지 봐줘 ' + '가'.repeat(200), previous), {kind: 'clarify'});
   assert.deepEqual(classifyChatInput('그거 맞아?', {hasPrevious: true, hasAttachment: true}), {kind: 'clarify'});
   assert.deepEqual(classifyChatInput('', previous), {kind: 'clarify'});
+});
+
+test('an explicit long fact-check request survives intent-gate failure', () => {
+  const question = '정빛낙 국방부대변인이 예술·체육요원을 포함한 보충역 제도의 단계적 감축 및 궁극적인 폐지 방안을 국방개혁 기본계획에 반영해 추진하겠다는 게 사실인지?';
+  assert.ok(question.length > 60);
+  assert.deepEqual(classifyChatInput(question, {hasAttachment: false}), {kind: 'verify'});
+  assert.deepEqual(classifyChatInput('이 내용이 맞는지 확인해줘', {hasAttachment: true}), {kind: 'verify'});
 });
 
 test('summarizes visible conversation history without providers', () => {
