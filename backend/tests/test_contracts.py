@@ -312,3 +312,22 @@ def test_response_contract_does_not_accept_internal_source_fields():
     payload["sources"] = [{**payload["sources"][0], "resolvedUrl": "https://example.org/final"}]
     with pytest.raises(ValidationError):
         FactCheckResult.model_validate(payload)
+
+
+def test_partial_truth_parts_preserve_and_validate_their_own_evidence():
+    payload = result_payload()
+    payload["evidence"].append({**payload["evidence"][0], "id": "e2", "relation": "contradicts"})
+    item = payload["claims"][0]
+    item.update(verdictCode="partially_supported", verdict="일부 사실 · 일부 거짓", evidenceIds=["e1", "e2"])
+    item["parts"] = [
+        {"statement": "첫 항목입니다.", "verdictCode": "mostly_supported", "verdict": "대체로 확인됨",
+         "factScore": 90, "summary": "첫 항목은 확인했습니다.", "evidenceIds": ["e1"]},
+        {"statement": "둘째 항목입니다.", "verdictCode": "contradicted", "verdict": "반박하는 근거 확인",
+         "factScore": 20, "summary": "둘째 항목은 반박했습니다.", "confirmed": ["근거에서 확인된 올바른 내용입니다."], "evidenceIds": ["e2"]},
+    ]
+    assert len(FactCheckResult.model_validate(payload).claims[0].parts) == 2
+    assert FactCheckResult.model_validate(payload).claims[0].parts[1].confirmed == ["근거에서 확인된 올바른 내용입니다."]
+    for links in (["e1"], ["missing"], []):
+        item["parts"][1]["evidenceIds"] = links
+        with pytest.raises(ValidationError):
+            FactCheckResult.model_validate(payload)

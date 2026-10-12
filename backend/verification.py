@@ -71,6 +71,19 @@ class JudgmentEvidence(BaseModel):
     comparison: Comparison
 
 
+class JudgmentPart(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    quote: JudgmentText
+    statement: JudgmentText
+    verdictCode: VerdictCode
+    factScore: int = Field(ge=0, le=100)
+    summary: JudgmentText
+    confirmed: list[JudgmentText] = Field(max_length=5)
+    unresolved: list[JudgmentText] = Field(max_length=5)
+    evidence: list[JudgmentEvidence] = Field(max_length=2)
+
+
 class Judgment(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -81,6 +94,7 @@ class Judgment(BaseModel):
     confirmed: list[JudgmentText] = Field(max_length=5)
     unresolved: list[JudgmentText] = Field(max_length=5)
     evidence: list[JudgmentEvidence] = Field(max_length=6)
+    parts: list[JudgmentPart] = Field(default_factory=list, max_length=3)
 
 
 class JudgmentResponse(BaseModel):
@@ -249,11 +263,18 @@ def _validate_model_coverage(
     actual = [judgment.claimId for judgment in judgments]
     if len(actual) != len(expected) or len(set(actual)) != len(actual) or set(actual) != expected:
         raise ValueError("INVALID_MODEL_OUTPUT")
+    for claim in fact_claims:
+        judgment = next(item for item in judgments if item.claimId == claim["id"])
+        anchors = [part.quote for part in judgment.parts]
+        if (len(anchors) == 1 or any(anchor not in claim["quote"] for anchor in anchors)
+                or any(left in right or right in left for i, left in enumerate(anchors)
+                       for right in anchors[i + 1:])):
+            raise ValueError("INVALID_MODEL_OUTPUT")
     return {judgment.claimId: judgment for judgment in judgments}
 
 
 def _validate_evidence(
-    judgment: Judgment,
+    judgment: Judgment | JudgmentPart,
     sources: dict[str, dict[str, Any]],
     source_texts: dict[str, str],
     source_passages: dict[str, list[str]] | None = None,
@@ -416,10 +437,40 @@ def _base_claim_result(
         "tone": "positive" if code == "mostly_supported" else "negative" if code == "contradicted" else "neutral",
         "summary": summary,
         "confirmed": [],
+        "refuted": [],
         "unresolved": [],
         "warnings": [],
         "evidenceIds": [],
+        "parts": [],
     }
+
+
+def _combine_parts(claim: dict[str, Any], parts: list[dict[str, Any]], judgment: Judgment) -> dict[str, Any]:
+    codes = {part["verdictCode"] for part in parts}
+    mixed = "mostly_supported" in codes and "contradicted" in codes
+    if mixed or "partially_supported" in codes or ("mostly_supported" in codes and len(codes) > 1):
+        code = "partially_supported"
+    elif len(codes) == 1:
+        code = next(iter(codes))
+    else:
+        code = next(item for item in ["conflicting_sources", "insufficient_evidence", "missing_context", "contradicted"] if item in codes)
+    # 근거 검사로 판정이 바뀌면 검사 전 종합 설명 대신 각 항목의 설명을 사용합니다.
+    aligned = judgment.verdictCode == code and all(
+        part["verdictCode"] == decision.verdictCode and not part["warnings"]
+        for part, decision in zip(parts, judgment.parts)
+    )
+    per_part_limit = (2_000 - len(parts) + 1) // len(parts)
+    summary = judgment.summary if aligned else " ".join(part["summary"][:per_part_limit] for part in parts)
+    result = _base_claim_result(claim, code, summary, round(sum(part["factScore"] for part in parts) / len(parts)))
+    if mixed:
+        result["verdict"] = "일부 사실 · 일부 거짓"
+    result["confirmed"] = [part["statement"] for part in parts if part["verdictCode"] == "mostly_supported"]
+    result["refuted"] = [part["statement"] for part in parts if part["verdictCode"] == "contradicted"]
+    result["unresolved"] = [part["summary"] for part in parts if part["verdictCode"] not in {"mostly_supported", "contradicted"}]
+    result["warnings"] = list(dict.fromkeys(warning for part in parts for warning in part["warnings"]))[:5]
+    result["evidenceIds"] = [evidence_id for part in parts for evidence_id in part["evidenceIds"]]
+    result["parts"] = [{key: part[key] for key in ("statement", "verdictCode", "verdict", "factScore", "summary", "confirmed", "evidenceIds")} for part in parts]
+    return result
 
 
 def ground_judgments(
@@ -485,41 +536,39 @@ def ground_judgments(
             continue
 
         judgment = by_claim[claim_id]
-        valid, rejected, condition_mismatch, invalid_sources = _validate_evidence(
-            judgment, source_map, source_texts, source_passages
-        )
-        if invalid_sources:
-            diagnostics.append({"code": "CITATION_REJECTED", "claimId": claim_id,
-                                "sourceIds": sorted(set(invalid_sources))})
-        code, reconciled_summary = _reconcile_verdict(judgment.verdictCode, valid)
-        summary = reconciled_summary or judgment.summary
-        confirmed = list(judgment.confirmed)
-        unresolved = list(judgment.unresolved)
-        warnings: list[str] = []
-
-        if rejected:
-            warnings.append("모델의 인용 또는 출처 연결을 수집 원문에서 확인하지 못했습니다.")
-        if condition_mismatch:
-            warnings.append("날짜·지역·단위 등 비교 조건이 일치하지 않는 인용은 직접 근거에서 제외했습니다.")
-
-        if rejected or code == "insufficient_evidence":
-            code = "insufficient_evidence"
-            if not valid:
-                summary = "검증 가능한 직접 인용이 부족하여 결론을 유보합니다."
-            confirmed = []
-        elif code == "conflicting_sources" and not summary:
-            summary = "동일한 비교 조건의 지지·반박 원문이 함께 확인되었습니다."
-
-        result = _base_claim_result(claim, code, summary, judgment.factScore)
-        result["confirmed"] = confirmed
-        result["unresolved"] = unresolved
-        result["warnings"] = warnings
-        for item in valid:
-            evidence_id = f"e{next_evidence_id}"
-            next_evidence_id += 1
-            evidence.append(_evidence_dict(item, claim_id, evidence_id, source_sections))
-            result["evidenceIds"].append(evidence_id)
-        final_claims.append(result)
+        grounded_parts = []
+        for decision in judgment.parts or [judgment]:
+            valid, rejected, condition_mismatch, invalid_sources = _validate_evidence(
+                decision, source_map, source_texts, source_passages
+            )
+            if invalid_sources:
+                diagnostics.append({"code": "CITATION_REJECTED", "claimId": claim_id,
+                                    "sourceIds": sorted(set(invalid_sources))})
+            code, reconciled_summary = _reconcile_verdict(decision.verdictCode, valid)
+            summary = reconciled_summary or decision.summary
+            warnings: list[str] = []
+            if rejected:
+                warnings.append("모델의 인용 또는 출처 연결을 수집 원문에서 확인하지 못했습니다.")
+            if condition_mismatch:
+                warnings.append("날짜·지역·단위 등 비교 조건이 일치하지 않는 인용은 직접 근거에서 제외했습니다.")
+            if rejected or code == "insufficient_evidence":
+                code = "insufficient_evidence"
+                if not valid:
+                    summary = "검증 가능한 직접 인용이 부족하여 결론을 유보합니다."
+            result = _base_claim_result(claim, code, summary, decision.factScore)
+            statement = decision.statement if judgment.parts else claim.get("statement") or claim["quote"]
+            result["statement"] = statement
+            result["confirmed"] = [] if code == "insufficient_evidence" else list(decision.confirmed)
+            result["refuted"] = [statement] if code == "contradicted" else []
+            result["unresolved"] = list(decision.unresolved)
+            result["warnings"] = warnings
+            for item in valid:
+                evidence_id = f"e{next_evidence_id}"
+                next_evidence_id += 1
+                evidence.append(_evidence_dict(item, claim_id, evidence_id, source_sections))
+                result["evidenceIds"].append(evidence_id)
+            grounded_parts.append(result)
+        final_claims.append(_combine_parts(claim, grounded_parts, judgment) if judgment.parts else grounded_parts[0])
 
     return {"claims": final_claims, "evidence": evidence, "diagnostics": diagnostics}
 
@@ -595,6 +644,15 @@ async def verify_claims(
                 "Quote one contiguous passage; never join quotations across passages. "
                 "Absence from these excerpts is not proof of absence from the whole source. Preserve nearby negation, dates and conditions. "
                 "Judge every factual or otherwise checkable claim exactly once using only the supplied verified source text. "
+                "Each claim's statement is the complete standalone proposition to judge; quote is only its exact anchor "
+                "from the submitted text. Judge each statement independently and do not combine sibling components. "
+                "When a claim still contains multiple independently checkable assertions, return 2-3 parts covering "
+                "all its assertions exactly once. Each part needs a distinct non-overlapping exact quote anchor from "
+                "the claim's quote, a standalone statement restoring only the original subject and predicate, and "
+                "its own verdict, score, summary and exact evidence (at most 2 quotations). Do not repeat the full "
+                "compound claim as a part. For atomic claims return an empty parts list. Never invent a part. "
+                "Support for one part and a refutation of a different part means partially_supported; it is not "
+                "conflicting_sources. A source conflict requires opposing evidence about the SAME part. "
                 "Each claim carries neighboring sentences from the submitted text and, for link inputs, "
                 "the article title and date: resolve demonstratives such as '이번' or '그' against them. "
                 "When a claim reports what someone else said, judge separately whether it was said and whether "
@@ -610,6 +668,16 @@ async def verify_claims(
                 "when a mismatch is material and unknown when it cannot be established. "
                 "No direct evidence means insufficient_evidence. "
                 "Write summary as a direct, nuanced answer to the claim in one or two sentences: state what the sources establish and what remains unresolved. "
+                "Lead summary with the actual factual answer in natural Korean, naming the events, people or values "
+                "established by the passages. For a mixed compound claim, briefly connect the supported fact with "
+                "the corrected fact in one or two sentences. The parent verdict must match its parts. Do not replace "
+                "the answer with a generic statement such as 'some parts are true and others are false'. "
+                "Each part's summary should explain that specific assertion. Include dates or other details only "
+                "when the cited passages establish them. "
+                "For contradicted claims and parts, identify what is wrong and state the corrected facts established "
+                "by the cited passages in summary and confirmed. Only include corrections explicitly established "
+                "by the supplied evidence, never background knowledge. If a passage disproves the claim without "
+                "establishing a replacement, leave confirmed empty and explain that the corrected content remains unknown. "
                 "Write summary, confirmed, and unresolved in polite Korean formal style ending with '~합니다', '~입니다', '~않습니다' (strictly avoid informal or plain form like '~한다', '~이다', '~않는다'). "
                 "When referencing sources in summary, confirmed, or unresolved, cite them using bracketed numbers like '[1]', '[2]' corresponding to the source order. "
                 "Write quoteTranslation in Korean. "
@@ -628,7 +696,10 @@ async def verify_claims(
                 "Opinions and predictions are handled outside this request. Do not invent dates, sources, or certainty."
             ),
             input_data={
-                "claims": checkable_claims,
+                "claims": [
+                    {**claim, "statement": claim.get("statement") or claim["quote"]}
+                    for claim in checkable_claims
+                ],
                 "focus": state.get("focus", ""),
                 "article": _article_context(state),
                 "neighbors": neighbors,
