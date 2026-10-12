@@ -43,6 +43,28 @@ def test_stream_explains_that_a_pinned_model_failed_without_exposing_provider_de
     }
 
 
+@pytest.mark.parametrize(('code', 'message'), [
+    ('PROVIDER_AUTH_FAILED', '모델 인증이 거부되었습니다. 서버의 API 키와 사용 권한을 확인해 주세요.'),
+    ('PROVIDER_TIMEOUT', '모델 응답이 지연되어 검증을 중단했습니다. 다른 모델로 다시 시도해 주세요.'),
+    ('MODEL_OUTPUT_INVALID', '모델 응답 형식이 올바르지 않아 판정을 확인하지 못했습니다. 다시 시도해 주세요.'),
+    ('VERIFICATION_FAILED', '출처 대조 과정에서 실패했습니다. 잠시 후 다시 시도해 주세요.'),
+])
+def test_stream_explains_verification_failure_without_provider_details(code, message):
+    from streaming import stream_events
+
+    class VerificationFailure:
+        async def astream(self, *args, **kwargs):
+            raise ValueError(f'{code}: PRIVATE_PROVIDER_DIAGNOSTIC')
+            yield {}
+
+    async def run():
+        return [json.loads(line) async for line in stream_events(VerificationFailure(), {})]
+
+    events = asyncio.run(run())
+    assert events[-1] == {'type': 'error', 'code': code, 'message': message}
+    assert 'PRIVATE_PROVIDER_DIAGNOSTIC' not in str(events)
+
+
 def test_task_cancellation_reaches_graph_cleanup():
     from streaming import stream_events
     closed = []

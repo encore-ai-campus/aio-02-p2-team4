@@ -174,7 +174,7 @@ function TrustIndex({score, claimCount, sourceCount, evidenceCount, warningCount
 }
 
 type ChatProgress = {
-  status?: string; statusElapsedSeconds?: number; statusStage?: AgentStage;
+  status?: string; statusStage?: AgentStage;
   sourcesFound?: ProgressSource[]; sourcesFoundElapsedSeconds?: number;
   sourcesRead?: ProgressSource[]; sourcesReadElapsedSeconds?: number;
   claims?: ProgressClaim[]; claimsElapsedSeconds?: number; completed?: boolean; error?: string;
@@ -363,6 +363,16 @@ function VerifyTimeline({progress}: {progress: ChatProgress}) {
 }
 
 function ProgressReply({progress}: {progress: ChatProgress}) {
+  const [stageElapsedSeconds, setStageElapsedSeconds] = useState(0);
+  useEffect(() => {
+    if (progress.completed || progress.error) return;
+    const startedAt = performance.now();
+    setStageElapsedSeconds(0);
+    const timer = window.setInterval(() => {
+      setStageElapsedSeconds(Math.floor((performance.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [progress.statusStage, progress.completed, progress.error]);
   const claims = progress.claims;
   const sources = progress.sourcesRead ?? [];
   const sourceNumbers = new Map(sources.map((source, index) => [source.id, index + 1]));
@@ -372,7 +382,7 @@ function ProgressReply({progress}: {progress: ChatProgress}) {
     {!progress.completed && !progress.error && <ThinkingLoader label={progress.status ?? '최종 답변을 만드는 중입니다.'}/>}
     <VerifyTimeline progress={progress}/>
     {progress.status && <p className="progress-current-stage" data-testid="progress-stage">
-      <span>{progress.status}</span><time>{progress.statusElapsedSeconds ?? 0}초 경과</time>
+      <span>{progress.status}</span><time>{stageElapsedSeconds}초 경과</time>
     </p>}
     {progress.sourcesFound !== undefined && progress.sourcesRead === undefined && <ProgressSourceList title="검색된 출처 후보" sources={progress.sourcesFound} elapsedSeconds={progress.sourcesFoundElapsedSeconds} testId="progress-candidate-source"/>}
     {progress.sourcesRead !== undefined && <ProgressSourceList title="가져온 원문" sources={progress.sourcesRead} elapsedSeconds={progress.sourcesReadElapsedSeconds} testId="progress-read-source"/>}
@@ -830,7 +840,7 @@ export default function FactCheckDashboard() {
           signal: controller.signal,
           onStage: stage => {
             if (generation.current !== current) return;
-            updateProgressMessage({status: stage.message, statusStage: stage.stage, statusElapsedSeconds: elapsedSeconds()});
+            updateProgressMessage({status: stage.message, statusStage: stage.stage});
             setNotice(stage.message);
           },
           onSources: event => {
@@ -891,7 +901,7 @@ export default function FactCheckDashboard() {
       saveChat(finalMessage,storageEpoch,result);
       if (progressMessageId) {
         setMessages(messages => [...messages.map(message => message.id === progressMessageId && message.progress
-          ? {...message, progress: {...message.progress, status: '검증 완료', statusElapsedSeconds: elapsedSeconds(), completed: true}}
+          ? {...message, progress: {...message.progress, status: '검증 완료', completed: true}}
           : message), finalMessage]);
       } else {
         setMessages(messages => [...messages, finalMessage]);

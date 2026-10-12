@@ -65,6 +65,14 @@ async def stream_events(graph, payload, *, timeout=240):
             yield encode({'type':'error','code':'MODEL_FAILED','message':'선택한 모델이 응답하지 않았습니다. 다른 모델을 선택해 다시 시도해 주세요.'})
         elif code == 'MODEL_UNAVAILABLE':
             yield encode({'type':'error','code':'MODEL_UNAVAILABLE','message':'선택한 모델의 API 키가 설정되어 있지 않습니다.'})
+        elif code == 'PROVIDER_AUTH_FAILED':
+            yield encode({'type':'error','code':'PROVIDER_AUTH_FAILED','message':'모델 인증이 거부되었습니다. 서버의 API 키와 사용 권한을 확인해 주세요.'})
+        elif code == 'PROVIDER_TIMEOUT':
+            yield encode({'type':'error','code':'PROVIDER_TIMEOUT','message':'모델 응답이 지연되어 검증을 중단했습니다. 다른 모델로 다시 시도해 주세요.'})
+        elif code == 'MODEL_OUTPUT_INVALID':
+            yield encode({'type':'error','code':'MODEL_OUTPUT_INVALID','message':'모델 응답 형식이 올바르지 않아 판정을 확인하지 못했습니다. 다시 시도해 주세요.'})
+        elif code == 'VERIFICATION_FAILED':
+            yield encode({'type':'error','code':'VERIFICATION_FAILED','message':'출처 대조 과정에서 실패했습니다. 잠시 후 다시 시도해 주세요.'})
         else:
             yield encode({'type':'error','code':'AGENT_FAILED','message':'검증을 완료하지 못했습니다.'})
     except Exception:

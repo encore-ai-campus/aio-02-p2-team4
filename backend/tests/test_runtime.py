@@ -247,3 +247,23 @@ def test_runtime_read_stage_uses_youtube_adapter_without_adding_comments_to_sour
     assert state["sources"][0]["youtubeViewCount"] == "1234567"
     assert state["sources"][0]["youtubeComments"] == ["댓글 맥락"]
     assert state["sourceTexts"] == {}
+
+
+def test_verify_uses_high_reasoning_and_bounded_provider_timeout(monkeypatch):
+    import runtime
+
+    captured = {}
+
+    async def fake_verify(state, *, client, provider, timeout_seconds):
+        captured["reasoning"] = provider.reasoning
+        captured["timeout_seconds"] = timeout_seconds
+        return {"claims": []}
+
+    monkeypatch.setattr(runtime, "verify_claims", fake_verify)
+    adapters = runtime.make_runtime_adapters(
+        runtime.Settings(api_key=SecretStr("test-openai-key"))
+    )
+    update = asyncio.run(adapters.verify({"modelPreference": "gpt-6-luna"}))
+
+    assert captured == {"reasoning": "high", "timeout_seconds": 45}
+    assert update["llmReasoning"] == "high"
