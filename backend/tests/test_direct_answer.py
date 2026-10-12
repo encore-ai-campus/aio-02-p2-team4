@@ -102,7 +102,8 @@ def test_runtime_stream_finishes_with_two_llm_requests_and_preserves_verificatio
 
     events = asyncio.run(run())
     assert len(requests) == 2
-    assert all(request["model"] == "deepseek-ai/deepseek-v4.1-flash" and request["reasoning_effort"] == "max" for request in requests)
+    assert all(request["model"] == "deepseek-ai/deepseek-v4.1-flash" for request in requests)
+    assert [request["reasoning_effort"] for request in requests] == ["max", "high"]
     assert events[-1]["type"] == "result"
     assert [event["type"] for event in events].count("preview") == 1
     result = FactCheckResponse.model_validate({"result": events[-1]["result"]}).result
@@ -110,7 +111,7 @@ def test_runtime_stream_finishes_with_two_llm_requests_and_preserves_verificatio
     assert result.answer.overview is None
     assert result.claims[0].summary == SUMMARY
     assert result.answer.model is None and result.answer.reasoning is None
-    assert result.model == "deepseek-v4.1-flash" and result.reasoning == "max"
+    assert result.model == "deepseek-v4.1-flash" and result.reasoning == "high"
     assert result.claims[0].verdictCode == code
     assert result.claims[0].factScore == score
     assert result.evidence[0].quote == QUOTE and result.evidence[0].quoteVerified is True

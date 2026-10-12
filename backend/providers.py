@@ -349,6 +349,7 @@ async def request_structured(
     input_data: dict[str, Any],
     schema: dict[str, Any],
     max_output_tokens: int,
+    timeout_seconds: float = 90,
 ) -> str:
     """Call a provider's structured-output endpoint and return only model text."""
     if not provider.api_key.strip():
@@ -366,7 +367,7 @@ async def request_structured(
             endpoint,
             json=payload,
             headers=headers,
-            timeout=90,
+            timeout=timeout_seconds,
         )
         data = _response_json(response, chat_completion=provider.kind == "hive")
         if provider.kind == "hive":

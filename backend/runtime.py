@@ -1,5 +1,6 @@
 """Server settings and the five-stage workflow with one bounded re-search."""
-from dataclasses import dataclass
+import asyncio
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import logging
 import os
@@ -23,7 +24,7 @@ from extraction import extract_claims, extract_image_claims, extract_page_claims
 from jev import JevError
 from schemas import ModelPreference
 from tavily_search import TavilyUnavailable, search_tavily
-from providers import ProviderCallError, providers_for_preference, run_with_fallback
+from providers import ProviderCallError, Reasoning, providers_for_preference, run_with_fallback
 from recovery import review_recovery
 from schemas import FactCheckRequest
 from search import _source_identity, apply_shared_origin_groups, build_search_query, origin_group_for_url, search_sources, source_type_for_url
@@ -55,6 +56,17 @@ def _http_status_from_exception(error: BaseException) -> int | None:
             return status_code
         current = current.__cause__ or current.__context__
     return None
+
+
+def _is_timeout_exception(error: BaseException) -> bool:
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, (httpx.TimeoutException, TimeoutError)):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 class Settings(BaseModel):
@@ -109,10 +121,18 @@ def make_runtime_adapters(settings: Settings) -> RuntimeAdapters:
         async with httpx.AsyncClient(timeout=90, trust_env=False) as client:
             return await operation(client)
 
-    async def with_fallback(state: FactCheckState, operation, failure_code: str):
+    async def with_fallback(
+        state: FactCheckState,
+        operation,
+        failure_code: str,
+        *,
+        reasoning_override: Reasoning | None = None,
+    ):
         preference = state.get("modelPreference", "auto")
         try:
             providers = providers_for_preference(settings, preference, search=failure_code == "SEARCH_FAILED")
+            if reasoning_override is not None:
+                providers = tuple(replace(provider, reasoning=reasoning_override) for provider in providers)
         except ValueError as exc:
             if str(exc) == "MODEL_UNAVAILABLE":
                 raise
@@ -138,7 +158,7 @@ def make_runtime_adapters(settings: Settings) -> RuntimeAdapters:
                     type(exc).__name__,
                     _http_status_from_exception(exc),
                 )
-                if str(exc) in {"INVALID_REQUEST", "NOT_CONFIGURED", "MODEL_UNAVAILABLE"}:
+                if str(exc) in {"INVALID_REQUEST", "NOT_CONFIGURED", "MODEL_UNAVAILABLE", "MODEL_OUTPUT_INVALID"}:
                     raise
                 raise ProviderCallError("Provider stage failed") from None
 
@@ -149,12 +169,16 @@ def make_runtime_adapters(settings: Settings) -> RuntimeAdapters:
                     lambda provider: attempt(provider, client),
                 )
             )
-        except ProviderCallError:
+        except ProviderCallError as exc:
+            if _http_status_from_exception(exc) in {401, 403}:
+                raise ValueError("PROVIDER_AUTH_FAILED") from None
+            if _is_timeout_exception(exc):
+                raise ValueError("PROVIDER_TIMEOUT") from None
             if preference != "auto":
                 raise ValueError("MODEL_FAILED") from None
             raise ValueError(failure_code) from None
         except ValueError as exc:
-            if str(exc) == "NOT_CONFIGURED":
+            if str(exc) in {"NOT_CONFIGURED", "MODEL_OUTPUT_INVALID", "PROVIDER_AUTH_FAILED", "PROVIDER_TIMEOUT"}:
                 raise
             raise ValueError(failure_code) from None
         return {
@@ -395,13 +419,18 @@ def make_runtime_adapters(settings: Settings) -> RuntimeAdapters:
                 return {**update, "llmModel": "jev-latest"}
             except JevError as exc:
                 _logger.warning("jev verify failed, escalating to llm: %s", type(exc).__name__)
-        return await with_fallback(
-            state,
-            lambda provider, client: verify_claims(
-                state, client=client, provider=provider
-            ),
-            "VERIFICATION_FAILED",
-        )
+        try:
+            async with asyncio.timeout(90):
+                return await with_fallback(
+                    state,
+                    lambda provider, client: verify_claims(
+                        state, client=client, provider=provider, timeout_seconds=45
+                    ),
+                    "VERIFICATION_FAILED",
+                    reasoning_override="high",
+                )
+        except TimeoutError:
+            raise ValueError("PROVIDER_TIMEOUT") from None
 
     async def synthesize(state: FactCheckState):
         # 기존 스트림 단계 이름을 유지하며 판정은 별도 생성 없이 반환합니다.
