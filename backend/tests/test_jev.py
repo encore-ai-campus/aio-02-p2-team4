@@ -227,7 +227,7 @@ def test_fast_check_searches_with_llm_and_sends_read_source_text_to_jev(monkeypa
     assert [(c.id, c.verdictCode, c.factScore) for c in result.claims] == [
         ("c1", "mostly_supported", 75),
     ]
-    assert seen["search_hosts"] == ["api.openai.com"]
+    assert seen["search_hosts"] == ["api.openai.com", "api.openai.com"]
     assert seen["jev_state"]["claim"] == claim
     assert "Expert forecasts disagree" in seen["jev_state"]["evidence"]
     assert result.claims[0].evidenceIds == []
@@ -268,7 +268,7 @@ def test_fast_check_llm_search_honors_the_selected_model(monkeypatch):
             )
 
     result = asyncio.run(run())
-    assert requested_models == ["gpt-6-luna"]
+    assert requested_models == ["gpt-6-luna", "gpt-6-luna"]
     assert result.claims[0].verdictCode == "mostly_supported"
 
 

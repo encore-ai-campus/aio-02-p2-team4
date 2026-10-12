@@ -435,6 +435,10 @@ async def _read_candidate(source, *, reader, youtube_reader):
         'youtubeComments':[],
         'youtubeDataStatus':'not_applicable',
     }
+    inline_text = source.get('inlineText')
+    if isinstance(inline_text, str) and inline_text.strip():
+        item.update(accessStatus='verified', resolvedUrl=source['url'])
+        return item, inline_text, None
     if source.get('sourceType') == '유튜브':
         item['youtubeDataStatus'] = 'not_configured' if youtube_reader is None else 'unavailable'
         if youtube_reader is not None:
