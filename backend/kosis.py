@@ -16,11 +16,13 @@ def _normalized(value: object) -> str:
 
 
 def is_cpi_claim(claims: list[dict], focus: str = "") -> bool:
-    target = _normalized(" ".join([
+    text = " ".join([
         focus,
         *(claim.get("statement") or claim.get("quote", "") for claim in claims),
-    ]))
-    return "소비자물가" in target or re.search(r"(?<![a-z])cpi(?![a-z])", target) is not None
+    ])
+    target = _normalized(text)
+    cpi_text = unicodedata.normalize("NFKC", text).casefold()
+    return "소비자물가" in target or re.search(r"(?<![a-z])cpi(?![a-z])", cpi_text) is not None
 
 
 async def _get_json(client: httpx.AsyncClient, path: str, params: dict) -> list[dict] | None:
