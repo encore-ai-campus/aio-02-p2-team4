@@ -145,13 +145,22 @@ function YoutubeVideoMetadata({source}: {source: FactSource}) {
   </div>;
 }
 
-function TrustIndex({score, claimCount, sourceCount, evidenceCount, warningCount}: {score: number | null; claimCount: number; sourceCount: number; evidenceCount: number; warningCount: number}) {
+function TrustIndex({score, claimCount, sourceCount, evidenceCount, warningCount, claims, selectedClaimId, onSelectClaim}: {score: number | null; claimCount: number; sourceCount: number; evidenceCount: number; warningCount: number; claims: readonly Claim[]; selectedClaimId?: string; onSelectClaim: (id: string) => void}) {
   const band = score === null ? 'neutral' : scoreBand(score);
+  const [claimMenuOpen, setClaimMenuOpen] = useState(false);
   return <div className={`trust-index ${score === null ? 'is-empty' : ''}`} data-score-band={band}>
       <div className="trust-index-head">
         <div><span className="metric-label">종합 신뢰지수</span><h3 className="fact-score-title"><ScrambleText>팩트 점수</ScrambleText></h3></div>
         <FactScoreGuide score={score}/>
       </div>
+    {claims.length > 1 && <div className="claim-score-control" onMouseEnter={() => setClaimMenuOpen(true)} onMouseLeave={() => setClaimMenuOpen(false)} onFocus={() => setClaimMenuOpen(true)} onBlur={event => {if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setClaimMenuOpen(false);}}>
+      <button type="button" className="claim-score-trigger" aria-haspopup="true" aria-expanded={claimMenuOpen} onClick={() => setClaimMenuOpen(true)}><Icon name="grid" size={15}/>주장별 점수</button>
+      {claimMenuOpen && <div className="claim-score-popover" id="claim-score-popover" role="region" aria-label="주장별 점수">
+        {claims.map((claim, index) => <button type="button" key={claim.id} className={`claim-score-option ${selectedClaimId === claim.id ? 'is-selected' : ''}`} aria-pressed={selectedClaimId === claim.id} onClick={() => {onSelectClaim(claim.id); setClaimMenuOpen(false);}}>
+          <span className="claim-score-option-index">주장 {String(index + 1).padStart(2, '0')}</span><Badge claim={claim}/><span className="claim-score-option-quote">{claim.quote}</span><span className="claim-score-option-value">{claim.factScore}<small>점</small></span>
+        </button>)}
+      </div>}
+    </div>}
     <div className="trust-index-main">
       <DonutChart size={148} progress={score ?? 0} label={score === null ? '검증 대기 중' : `종합 신뢰지수 ${score}점`}>
         {score === null
@@ -980,17 +989,6 @@ export default function FactCheckDashboard() {
   }
 
   const select = (id: string) => dispatch({type: 'select', id});
-  const original = snapshot && (() => {
-    const chunks: ReactNode[] = [];
-    let cursor = 0;
-    snapshot.claims.forEach((claim, index) => {
-      chunks.push(snapshot.text.slice(cursor, claim.start));
-      chunks.push(<button key={claim.id} className={`sentence ${claim.id === state.selectedId ? 'selected' : ''}`} aria-pressed={claim.id === state.selectedId} onClick={() => select(claim.id)}><span className="sentence-number">{String(index + 1).padStart(2, '0')}</span>{claim.quote}</button>);
-      cursor = claim.end;
-    });
-    chunks.push(snapshot.text.slice(cursor));
-    return chunks;
-  })();
 
   return <MotionConfig reducedMotion="user"><div className="app-shell" id="top">
     <FloatingLinesBackground />
@@ -1088,17 +1086,13 @@ export default function FactCheckDashboard() {
           {snapshot ? <>
             <div className="dashboard-meta"><span className="document-title"><Icon name={snapshot.demo ? 'book' : 'file'} size={16}/>{snapshot.demo ? '합성 예시 · 외부 전송 없음' : '직접 입력한 원문 · 실제 검증'}</span><div><span>{snapshot.claims.length}개 주장</span><span>{sourceCount}개 출처</span><span>{snapshot.demo ? '시연용 데이터' : liveResult?.checkedAt || '검증 시점 기록됨'}</span></div></div>
             <div className="dashboard-top-grid">
-              <Panel className="trust-panel"><TrustIndex score={trustScore} claimCount={snapshot.claims.length} sourceCount={sourceCount} evidenceCount={evidenceCount} warningCount={warningCount}/></Panel>
-              <Panel className="claim-panel"><div className="panel-top"><h3 className="scramble-panel-title"><Icon name="grid" size={17}/><ScrambleText>주장별 점수</ScrambleText></h3><span>선택하면 근거가 바뀝니다</span></div><div className="claim-selector" aria-label="주장 후보 선택">{snapshot.claims.map((claim, index) => <motion.button key={claim.id} ref={spotlight} layout={!reduce} className={`claim-card ${selected?.id === claim.id ? 'is-selected' : ''}`} aria-pressed={selected?.id === claim.id} onClick={() => select(claim.id)}><div className="claim-card-top"><span>주장 {String(index + 1).padStart(2, '0')}</span><Badge claim={claim}/></div><p>{claim.quote}</p><div className="claim-card-score"><strong>{claim.factScore}</strong><span>점</span></div><span className="claim-card-bottom">{selected?.id === claim.id ? '선택한 주장' : '근거 살펴보기'}<Icon name={selected?.id === claim.id ? 'check' : 'arrow'} size={15}/></span></motion.button>)}</div></Panel>
+              <Panel className="trust-panel"><TrustIndex score={trustScore} claimCount={snapshot.claims.length} sourceCount={sourceCount} evidenceCount={evidenceCount} warningCount={warningCount} claims={snapshot.claims} selectedClaimId={selected?.id} onSelectClaim={select}/></Panel>
             </div>
             {!snapshot.demo && liveResult?.market && <Panel className="market-panel"><div className="panel-top"><h3><Icon name="grid" size={17}/><ScrambleText>주가 맥락</ScrambleText></h3><span>참고용 · 판정 근거 아님</span></div><StockChart market={liveResult.market}/></Panel>}
-            <><div className="mobile-tabs" role="group" aria-label="검토 화면 선택"><span className="mobile-tabs-indicator" data-active={mobileTab} aria-hidden="true"/><button aria-pressed={mobileTab === 'original'} onClick={() => setMobileTab('original')}>원문</button><button aria-pressed={mobileTab === 'results'} onClick={() => setMobileTab('results')}>결과</button><button aria-pressed={mobileTab === 'sources'} onClick={() => setMobileTab('sources')}>출처</button></div>
+            <><div className="mobile-tabs" role="group" aria-label="검토 화면 선택"><span className="mobile-tabs-indicator" data-active={mobileTab} aria-hidden="true"/><button aria-pressed={mobileTab === 'results'} onClick={() => setMobileTab('results')}>결과</button><button aria-pressed={mobileTab === 'sources'} onClick={() => setMobileTab('sources')}>출처</button></div>
             <div className={`dashboard-detail-layout mobile-${mobileTab}`}>
               <div className="dashboard-left-stack">
-              <div className="dashboard-left-stack">
-                <Panel as="article" className="original-panel"><div className="panel-top"><h3 className="scramble-panel-title"><Icon name="file" size={17}/><ScrambleText>원문</ScrambleText></h3><span>{snapshot.demo ? '합성 문서' : '제출한 원문'}</span></div><div className="original-content"><span className="article-kicker">{snapshot.demo ? '문화 행사 · 가상의 사례' : '검증 요청 시점의 원문'}</span><h3>{snapshot.demo ? '달빛시 가을빛 축제, 알아두면 좋은 내용' : '검증한 원문'}</h3><p className="article-byline">{snapshot.demo ? 'True or Not 예시 편집실 · 실제 기사 아님' : '원문을 보존한 상태로 주장을 추출했습니다.'}</p><div className="original-text">{original}</div><div className="highlight-legend"><span/>강조된 문장을 선택하면 오른쪽 근거가 바뀝니다.</div>{snapshot.focus && <div className="focus-note"><Icon name="lens" size={17}/><div><strong>확인하고 싶은 내용</strong><p>{snapshot.focus}</p><small>{snapshot.demo ? '예시의 비교 범위를 보여드립니다.' : '검증의 참고 범위로 전달했습니다.'}</small></div></div>}</div><div className="original-footer"><Icon name="shield" size={15}/>{snapshot.demo ? '실제 인물·지역·사건과 무관한 합성 예시입니다.' : '원문에서 추출한 최대 3개의 주장을 검증합니다.'}</div></Panel>
                 <Panel className="source-index-panel"><div className="panel-top"><h3><Icon name="book" size={17}/><ScrambleText>검토한 출처</ScrambleText></h3><span>{sourceCount}개 수집</span></div><div className="source-index-grid">{snapshot.demo ? documents.map((source, index) => <button className="source-index-card" ref={spotlight} key={source.id} onClick={() => setDialog(source.id)}><span className="source-index-number">{String(index + 1).padStart(2, '0')}</span><span><strong>{source.title}</strong><small>{source.publisher}</small></span><Icon name="arrow" size={15}/></button>) : liveResult?.sources.map((source, index) => {const href = safeSourceUrl(source.url); const sourceLabel = source.sourceType === '유튜브' ? source.youtubeDataStatus === 'collected' ? `공개 댓글 ${source.youtubeComments.length}개` : source.youtubeDataStatus === 'not_configured' ? '댓글 API 미설정' : '댓글 조회 불가' : source.accessStatus === 'verified' ? '원문 확인' : '접근 불가'; const content = <><span className="source-index-number">{String(index + 1).padStart(2, '0')}</span><span><strong>{source.youtubeTitle || source.title}</strong><small>{source.sourceType} · {source.publisher} · {sourceDiscoveryLabel(source)} · {sourceLabel}</small></span><Icon name="arrow" size={15}/></>; return href ? <a className="source-index-card" ref={spotlight} href={href} target="_blank" rel="noopener noreferrer" key={source.id}>{content}</a> : <div className="source-index-card" ref={spotlight} key={source.id}>{content}</div>;})}{!sourceCount && <div className="source-index-empty">아직 수집된 출처가 없습니다.</div>}</div></Panel>
-              </div>
               </div>
               <Panel className="evidence-panel"><div className="panel-top"><h3 className="scramble-panel-title"><Icon name="lens" size={18}/><ScrambleText>선택한 주장과 근거</ScrambleText></h3><span>{snapshot.demo ? '예시 비교' : '수집된 원문 비교'}</span></div><AnimatePresence mode="wait" initial={false}><motion.div className="detail-content" key={selected?.id || 'empty'} initial={reduce ? false : {opacity: 0, y: 5}} animate={{opacity: 1, y: 0}} exit={{opacity: 0}} transition={{duration: reduce ? 0 : 0.18}}>{selected ? <>
                 <div className="result-overview"><span className="article-kicker">선택한 주장</span><h3>{selected.quote}</h3><Badge claim={selected}/><p>{selected.summary}</p></div>
