@@ -142,6 +142,10 @@ button, p, h3, dd { overflow-wrap: anywhere; }
 .answer-citation-index { flex: 0 0 auto; color: #d5eee9; font-variant-numeric: tabular-nums; }
 .answer-citation-title { flex: 1 1 auto; min-width: 0; max-width: min(72vw, 360px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .answer-citation-chip.is-unavailable { border-style: dashed; color: #919ba2; background: rgb(255 255 255 / .025); }
+.inline-citation { display: inline-flex; align-items: center; margin: 0 3px; padding: 1px 6px; border: 1px solid rgb(155 221 212 / .3); border-radius: 6px; color: #a8d9d2; background: rgb(155 221 212 / .09); font-size: 11px; font-weight: 600; line-height: 1.35; font-variant-numeric: tabular-nums; text-decoration: none; cursor: pointer; vertical-align: baseline; transition: border-color .16s ease, color .16s ease, background-color .16s ease, box-shadow .16s ease, transform .16s ease; }
+.inline-citation:hover { border-color: rgb(155 221 212 / .7); color: #ffffff; background: rgb(155 221 212 / .24); box-shadow: 0 0 10px rgb(155 221 212 / .25); transform: translateY(-1px); }
+.inline-citation:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.inline-citation.is-text { cursor: help; }
 .answer-section { margin-top: 12px; padding: 11px 13px; border-left: 2px solid rgb(155 221 212 / .4); border-radius: 0 9px 9px 0; background: rgb(255 255 255 / .025); }
 .answer-section h4, .answer-conclusion h4 { margin-bottom: 6px; color: #c5d0d2; font-size: 11px; font-weight: 600; }
 .answer-section--counter { border-left-color: rgb(184 173 240 / .62); }

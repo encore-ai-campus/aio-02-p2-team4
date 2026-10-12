@@ -32,7 +32,7 @@ class SummaryDraft(BaseModel):
 
 
 _SUMMARY_INSTRUCTIONS = (
-    "Summarize the supplied content in Korean for research reference. "
+    "Summarize the supplied content in polite Korean formal style ('~합니다', '~입니다', '~않습니다'). "
     "Describe what the content says: its topic, main points, and any numbers, "
     "names, or dates it states. Never judge whether the content is true or "
     "false, and never use verdict words such as confirmed, false, verified, "

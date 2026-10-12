@@ -46,3 +46,73 @@ test('intent forwards explicit true consent and selected model on repeated reque
     assert.deepEqual(bodies, [input, input]);
   } finally { globalThis.fetch = saved; }
 });
+
+test('intent proxy preserves clarification and its previous target', async () => {
+  const {POST} = await import('../../api/intent/route.ts');
+  const saved = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({action: 'clarify', target: 'previous', reply: '어떤 원문을 다시 확인할까요?', focus: null});
+  try {
+    const response = await POST(request('intent', {text: '다시 해줘', consent: true, context: {}}));
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {action: 'clarify', target: 'previous', reply: '어떤 원문을 다시 확인할까요?', focus: null});
+  } finally {globalThis.fetch = saved;}
+});
+
+test('intent only reads linked content when the model explicitly requests it', async () => {
+  const {POST} = await import('../../api/intent/route.ts');
+  const saved = globalThis.fetch;
+  try {
+    for (const readLink of [true, false, 'true']) {
+      globalThis.fetch = async () => Response.json({action: 'reply', target: 'current', reply: '링크 안내', focus: null, readLink});
+      const response = await POST(request('intent', {text: '링크 질문', consent: true, context: {}}));
+      if (typeof readLink !== 'boolean') assert.notEqual(response.status, 200);
+      else assert.equal((await response.json()).readLink === true, readLink);
+    }
+  } finally {globalThis.fetch = saved;}
+});
+
+test('intent proxy accepts a bounded image and rejects oversized streamed input before forwarding', async () => {
+  const {POST} = await import('../../api/intent/route.ts');
+  const saved = globalThis.fetch;
+  const forwarded = [];
+  globalThis.fetch = async (_, init) => {
+    forwarded.push(JSON.parse(init.body));
+    return Response.json({action: 'reply', target: 'current', reply: '이미지 설명입니다.', focus: null});
+  };
+  try {
+    const input = {text: '이게 뭐야?', consent: true, context: {}, image: {mime: 'image/png', data: 'a'.repeat(30000)}};
+    assert.equal((await POST(request('intent', input))).status, 200);
+    assert.deepEqual(forwarded, [input]);
+    assert.equal((await POST(request('intent', {...input, image: {...input.image, data: 'a'.repeat(3000001)}}))).status, 400);
+    assert.equal(forwarded.length, 1);
+  } finally {globalThis.fetch = saved;}
+});
+
+test('intent proxy preserves authentication failure but never forwards provider details', async () => {
+  const {POST} = await import('../../api/intent/route.ts');
+  const saved = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({code:'PROVIDER_AUTH_FAILED',message:'secret-test-only'}, {status:502});
+  try {
+    const response = await POST(request('intent', {text:'검증할 주장',consent:true}));
+    assert.equal(response.status,503);
+    const body = await response.json();
+    assert.equal(body.code,'PROVIDER_AUTH_FAILED');
+    assert.match(body.message,/인증/);
+    assert.doesNotMatch(JSON.stringify(body),/secret-test-only|내용 설명/);
+  } finally {globalThis.fetch = saved;}
+});
+
+test('intent proxy keeps unknown and malformed failures generic without leaking their bodies', async () => {
+  const {POST} = await import('../../api/intent/route.ts');
+  const saved = globalThis.fetch;
+  try {
+    for (const upstream of [Response.json({code:'UNKNOWN',message:'secret-test-only'},{status:502}), new Response('secret-test-only',{status:502})]) {
+      globalThis.fetch = async () => upstream;
+      const response = await POST(request('intent', {text:'검증할 주장',consent:true}));
+      assert.equal(response.status,503);
+      const body = await response.json();
+      assert.equal(body.code,'INTENT_FAILED');
+      assert.doesNotMatch(JSON.stringify(body),/secret-test-only/);
+    }
+  } finally {globalThis.fetch = saved;}
+});

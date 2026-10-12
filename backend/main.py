@@ -11,15 +11,15 @@ from fastapi import Depends, FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from streaming import stream_events
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from contracts import AgentStatus, ContentSummary, FactCheckResponse
 from intent import classify_intent
 from jev import JevError
 from summarize import summarize_content
-from providers import ProviderCallError, configured_model_options, configured_providers, providers_for_preference, run_with_fallback
+from providers import ProviderAuthenticationError, ProviderCallError, configured_model_options, configured_providers, providers_for_preference, run_with_fallback
 from runtime import build_runtime_workflow, load_settings, run_jev_fast_check
-from schemas import FactCheckRequest, ModelPreference
+from schemas import FactCheckRequest
 from conversation_api import router as conversation_router, storage_error
 from conversation_store import ConversationStore, StorageError
 from dotenv import dotenv_values
@@ -127,7 +127,7 @@ async def agent_status(response: Response):
         engine="langgraph",
         model=primary.model if primary else None,
         reasoning=primary.reasoning if primary else None,
-        webSearch=bool(settings.tavily_api_key.get_secret_value().strip()) or any(provider.kind != "experiential" for provider in providers),
+        webSearch=bool(settings.tavily_api_key.get_secret_value().strip()) or any(provider.kind != "hive" for provider in providers),
         modelOptions=configured_model_options(settings),
         phase="workflow-ready" if configured else "api-foundation",
     )
@@ -276,30 +276,33 @@ class IntentClaim(BaseModel):
 class IntentContext(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    previousText: str | None = Field(default=None, max_length=3000)
+    previousText: str | None = Field(default=None, max_length=12000)
+    previousFocus: str = Field(default="", max_length=500)
+    previousLinkUrl: str | None = Field(default=None, max_length=2048)
     previousClaims: list[IntentClaim] = Field(default_factory=list, max_length=3)
     recentUser: list[str] = Field(default_factory=list, max_length=5)
+    recentAssistant: list[str] = Field(default_factory=list, max_length=2)
+    previousSources: list["IntentSource"] = Field(default_factory=list, max_length=6)
+    previousWarnings: list[str] = Field(default_factory=list, max_length=8)
+    previousAttachment: bool = False
 
 
-class IntentRequest(BaseModel):
+class IntentSource(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    text: str = Field(min_length=1, max_length=2000)
-    consent: Literal[True]
-    context: IntentContext = Field(default_factory=IntentContext)
-    modelPreference: ModelPreference = "auto"
+    url: str = Field(max_length=2048)
+    title: str = Field(max_length=300)
+    accessStatus: Literal["verified", "unavailable"]
 
-    @field_validator("consent", mode="before")
-    @classmethod
-    def require_consent(cls, value):
-        if type(value) is not bool:
-            raise ValueError("Explicit consent is required")
-        return value
+
+class IntentRequest(FactCheckRequest):
+    focus: str = Field(default="", max_length=500)
+    context: IntentContext = Field(default_factory=IntentContext)
 
 
 @app.post("/api/intent")
 async def intent(payload: IntentRequest):
-    """Decide verify-vs-reply with one cheap model call; never streams."""
+    """동일 공급자 호출에서 의도를 분류하고 일반 답변을 반환합니다."""
     settings = load_settings()
     try:
         providers = providers_for_preference(settings, payload.modelPreference)
@@ -324,16 +327,22 @@ async def intent(payload: IntentRequest):
                     payload.context.model_dump(),
                     client=client,
                     provider=provider,
+                    focus=payload.focus,
+                    image=payload.image.model_dump() if payload.image is not None else None,
+                    link_url=payload.linkUrl,
                 ),
             )
-    except ProviderCallError:
+    except ProviderCallError as exc:
+        authentication_failed = isinstance(exc, ProviderAuthenticationError)
         return JSONResponse(
-            {"code": "AGENT_FAILED", "message": "의도 파악에 실패했습니다."},
+            {"code": "PROVIDER_AUTH_FAILED" if authentication_failed else "AGENT_FAILED",
+             "message": "선택한 모델의 인증에 실패했습니다. 서버 API 키와 접근 권한을 확인해 주세요."
+             if authentication_failed else "의도 파악에 실패했습니다."},
             status_code=502,
             headers={"Cache-Control": "no-store"},
         )
     return JSONResponse(
-        {"action": decision["action"], "reply": decision["reply"], "focus": decision["focus"]},
+        decision,
         headers={"Cache-Control": "no-store"},
     )
 

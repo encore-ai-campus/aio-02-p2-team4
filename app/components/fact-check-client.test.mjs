@@ -1,5 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+
+test('accepts judgment-only final results but rejects generated blocks or model metadata', async () => {
+  const answer = {status:'judgment_only',overview:null,sections:[],conclusion:null,model:null,reasoning:null};
+  const accepted = await readFactCheckStream(response(JSON.stringify({type:'result',result:{...result,answer}})));
+  assert.equal(accepted.answer.status,'judgment_only');
+  for (const change of [{model:'gpt-6-luna'},{reasoning:'max'},{overview:{text:'생성한 설명',citations:[]}}]) {
+    await assert.rejects(readFactCheckStream(response(JSON.stringify({type:'result',result:{...result,answer:{...answer,...change}}}))),/결과/);
+  }
+});
 import {faviconUrlFor, readFactCheckStream, safeSourceUrl, validResult} from './fact-check-client.ts';
 
 const insufficientAnswer = {status:'insufficient_evidence',overview:null,sections:[],conclusion:null,model:null,reasoning:null};

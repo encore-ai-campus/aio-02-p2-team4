@@ -12,7 +12,7 @@ from dotenv import dotenv_values
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, SecretStr
 
-from answer_synthesis import direct_fact_answer, eligible_sources, insufficient_answer, synthesize_answer
+from answer_synthesis import insufficient_answer
 from contracts import (
     FactCheckProgressCitation,
     FactCheckProgressClaim,
@@ -58,7 +58,7 @@ def _http_status_from_exception(error: BaseException) -> int | None:
 
 class Settings(BaseModel):
     api_key: SecretStr
-    explabs_api_key: SecretStr = SecretStr("")
+    hive_api_key: SecretStr = SecretStr("")
     gemini_api_key: SecretStr = SecretStr("")
     youtube_api_key: SecretStr = SecretStr("")
     tavily_api_key: SecretStr = SecretStr("")
@@ -71,7 +71,7 @@ def load_settings(env_path: Path | None = None) -> Settings:
     path = env_path if env_path is not None else Path(__file__).with_name(".env")
     values = dotenv_values(path, encoding="utf-8-sig", interpolate=False)
     key = os.environ.get("OPENAI_API_KEY", values.get("OPENAI_API_KEY") or "")
-    explabs_key = os.environ.get("EXPLABS_API_KEY", values.get("EXPLABS_API_KEY") or "")
+    hive_key = os.environ.get("HIVE_API_KEY", values.get("HIVE_API_KEY") or "")
     gemini_key = os.environ.get("GEMINI_API_KEY", values.get("GEMINI_API_KEY") or "")
     youtube_key = os.environ.get("YOUTUBE_API_KEY", values.get("YOUTUBE_API_KEY") or "")
     tavily_key = os.environ.get("TAVILY_API_KEY", values.get("TAVILY_API_KEY") or "")
@@ -79,7 +79,7 @@ def load_settings(env_path: Path | None = None) -> Settings:
     finnhub_key = os.environ.get("FINNHUB_API_KEY", values.get("FINNHUB_API_KEY") or "")
     return Settings(
         api_key=SecretStr(key.strip()),
-        explabs_api_key=SecretStr(explabs_key.strip()),
+        hive_api_key=SecretStr(hive_key.strip()),
         gemini_api_key=SecretStr(gemini_key.strip()),
         youtube_api_key=SecretStr(youtube_key.strip()),
         tavily_api_key=SecretStr(tavily_key.strip()),
@@ -378,49 +378,11 @@ def make_runtime_adapters(settings: Settings) -> RuntimeAdapters:
         )
 
     async def synthesize(state: FactCheckState):
-        if state.get("jevMode"):
-            return {
-                "answer": insufficient_answer(),
-                "answerModel": None,
-                "answerReasoning": None,
-            }
-        direct_answer = direct_fact_answer(state)
-        if direct_answer is not None:
-            return {"answer": direct_answer, "answerModel": None, "answerReasoning": None}
-        if not eligible_sources(state):
-            return {
-                "answer": insufficient_answer(),
-                "answerModel": None,
-                "answerReasoning": None,
-            }
-
-        async def operation(provider, client):
-            try:
-                return {
-                    "answer": await synthesize_answer(
-                        state, client=client, provider=provider,
-                    ),
-                }
-            except ProviderCallError as exc:
-                if str(exc) != "Incomplete response" or provider.kind == "experiential":
-                    raise
-                # Token cap hit: retry once with a smaller budget instead of
-                # failing over to the next provider with the same oversized ask.
-                # Experiential ignores small caps (16,000 floor), so retrying
-                # there would repeat the identical request: let fallback handle it.
-                return {
-                    "answer": await synthesize_answer(
-                        state, client=client, provider=provider,
-                        max_output_tokens=2_000,
-                    ),
-                }
-
-        update = await with_fallback(state, operation, "SYNTHESIS_FAILED")
-        answer = update["answer"]
+        # 기존 스트림 단계 이름을 유지하며 판정은 별도 생성 없이 반환합니다.
         return {
-            "answer": answer,
-            "answerModel": answer["model"],
-            "answerReasoning": answer["reasoning"],
+            "answer": insufficient_answer("judgment_only"),
+            "answerModel": None,
+            "answerReasoning": None,
         }
 
     return RuntimeAdapters(
@@ -836,7 +798,7 @@ def build_runtime_workflow(
     *,
     adapters: RuntimeAdapters | None = None,
 ):
-    """Compile five stages, review failures once, and assemble after synthesis."""
+    """판정 후 별도 모델 생성 없이 결과를 정리하며 필요하면 한 번 재탐색합니다."""
     runtime_adapters = adapters or make_runtime_adapters(settings)
 
     async def extracting(state: FactCheckState):
@@ -870,27 +832,7 @@ def build_runtime_workflow(
                 "sourceSections": {sid: sections for sid, sections in update.get("sourceSections", {}).items() if sid in ids}}
 
     async def synthesizing(state: FactCheckState):
-        sources_available = bool(eligible_sources(state))
-        try:
-            if not sources_available:
-                update = {
-                    "answer": insufficient_answer(),
-                    "answerModel": None,
-                    "answerReasoning": None,
-                }
-            else:
-                update = await runtime_adapters.synthesize(state)
-        except ValueError as exc:
-            if str(exc) not in {"NOT_CONFIGURED", "SYNTHESIS_FAILED", "MODEL_FAILED"}:
-                raise
-            update = {
-                "answer": insufficient_answer(
-                    status="synthesis_failed" if sources_available else "insufficient_evidence"
-                ),
-                "answerModel": None,
-                "answerReasoning": None,
-            }
-
+        update = await runtime_adapters.synthesize(state)
         if not isinstance(update, dict):
             update = {}
         answer = update.get("answer")

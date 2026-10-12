@@ -6,13 +6,15 @@ import type { CSSProperties, FormEvent, ReactNode } from 'react';
 import { initialState, transition } from './demo-state';
 import type { Claim } from './demo-state';
 import { MODEL_OPTIONS } from '../lib/fact-check-contract';
-import type { AgentStage, AnswerBlock, AttachedImage, ContentSummary, FactCheckAnswer, FactCheckRequest, FactCheckResult, FactSource, ModelOption, ModelPreference, ProgressClaim, ProgressSource } from '../lib/fact-check-contract';
+import type { AgentStage, AnswerBlock, AttachedImage, ContentSummary, FactCheckAnswer, FactClaim, FactEvidence, FactCheckRequest, FactCheckResult, FactSource, ModelOption, ModelPreference, ProgressClaim, ProgressSource } from '../lib/fact-check-contract';
 import { sourceDiscoveryLabel } from '../lib/source-discovery';
 import { scoreBand, scoreLabel } from '../lib/fact-score';
 import { formatYoutubePublishedAt, formatYoutubeViewCount, stripYoutubeApiDataForExport, youtubeThumbnailUrl } from '../lib/youtube-context';
 import { FactCheckError, faviconUrlFor, readFactCheckStream, safeSourceUrl, validResult } from './fact-check-client';
 import { composeAssistantReply, createAnswerCitationDisplayState, modelLabel as modelNameLabel, presentAnswerCitations } from './fact-check-reply';
-import { classifyChatInput, describeHistory, isFollowUpText, isIdentityQuestion, isSummarizeRequest, metaReply } from './chat-intent';
+import { buildGateContext, clarificationMaterial, classifyChatInput, describeHistory, isIdentityQuestion, metaReply, verificationInput } from './chat-intent';
+import type { GateDecision } from './chat-intent';
+import { readGateDecision } from '../lib/chat-intent-contract';
 import { DEMO_FOCUS, DEMO_TEXT, demoPreview, documents } from './demo-fixture';
 import ScrambleText from './scramble-text';
 import StockChart from './stock-chart';
@@ -34,6 +36,7 @@ import type {MessagePage,StoredMessage} from '../lib/conversation-contract';
 import BellToggle from './bell-toggle';
 import GlideSelect from './glide-select';
 import type { GlideSelectOption } from './glide-select';
+import SourceAnnotatedText from './source-annotated-text';
 
 type IconName = 'lens' | 'grid' | 'book' | 'arrow' | 'file' | 'link' | 'close' | 'download' | 'plus' | 'shield' | 'check' | 'reset';
 
@@ -178,11 +181,11 @@ type ChatProgress = {
   sourcesRead?: ProgressSource[]; sourcesReadElapsedSeconds?: number;
   claims?: ProgressClaim[]; claimsElapsedSeconds?: number; completed?: boolean; error?: string;
 };
-type ChatMessage = {id: string; role: 'assistant' | 'user'; text?: string; answer?: FactCheckAnswer; factScore?: number | null; verdict?: string | null; search?: string | null; scoreMode?: 'jev' | 'claims'; scoreEngine?: string | null; sources?: FactSource[]; progress?: ChatProgress; summary?: ContentSummary; meta?: string; tone?: 'normal' | 'error'; imagePreview?: string; thinking?: boolean; storageStatus?: 'cancelled'};
+type ChatMessage = {id: string; role: 'assistant' | 'user'; text?: string; answer?: FactCheckAnswer; judgments?: FactClaim[]; evidence?: FactEvidence[]; factScore?: number | null; verdict?: string | null; search?: string | null; scoreMode?: 'jev' | 'claims'; scoreEngine?: string | null; sources?: FactSource[]; progress?: ChatProgress; summary?: ContentSummary; meta?: string; tone?: 'normal' | 'error'; imagePreview?: string; thinking?: boolean; storageStatus?: 'cancelled'};
 type ModelSelection = ModelPreference;
 
 function ThinkingLoader({label}: {label: string}) {
-  return <span className="chat-loader-row" role="status" aria-label={label}><LatticeLoader label="검증 중" doneLabel="검증 완료" errorLabel="검증 실패" pattern="orbit" grid={3} shape="round" cellSize={7} gap={3} fontSize={12} step={75} idleOpacity={0.15} glow color="#ffffff" showTimer/><span>{label}</span></span>;
+  return <span className="chat-loader-row" role="status" aria-label={label}><LatticeLoader label="요청 처리 중" doneLabel="처리 완료" errorLabel="처리 실패" pattern="orbit" grid={3} shape="round" cellSize={7} gap={3} fontSize={12} step={75} idleOpacity={0.15} glow color="#ffffff" showTimer/><span>{label}</span></span>;
 }
 
 function SummaryReply({summary}: {summary: ContentSummary}) {
@@ -223,10 +226,10 @@ function Panel({as = 'div', className = '', children, 'aria-labelledby': labelle
   return <Element className={`panel-host ${className}`} aria-labelledby={labelledBy}>{children}</Element>;
 }
 
-function AnswerBlockView({block, sources, citationState}: {block: AnswerBlock; sources: FactSource[]; citationState: ReturnType<typeof createAnswerCitationDisplayState>}) {
-  const citations = presentAnswerCitations(block.citations, sources, citationState);
+function AnswerBlockView({block, sources, citationState, verifiedEvidence = false}: {block: AnswerBlock; sources: FactSource[]; citationState: ReturnType<typeof createAnswerCitationDisplayState>; verifiedEvidence?: boolean}) {
+  const citations = presentAnswerCitations(block.citations, sources, citationState, verifiedEvidence);
   return <div className="answer-block">
-    <p className="answer-block-text">{block.text}</p>
+    <p className="answer-block-text"><SourceAnnotatedText text={block.text} sources={sources}/></p>
     {citations.length > 0 && <ul className="answer-citations" aria-label="답변 근거 출처">
       {citations.map(({number, source, href, linkTarget}, index) => <li key={`${number}-${index}`}>
           {linkTarget === 'external' && source && href
@@ -261,6 +264,20 @@ function AnswerOverview({answer, sources}: {answer: FactCheckAnswer; sources: Fa
   </section>;
 }
 
+function JudgmentReply({claims, evidence, sources}: {claims: FactClaim[]; evidence: FactEvidence[]; sources: FactSource[]}) {
+  return <section className="ai-answer" aria-label="판정 결과">
+    <div className="ai-answer-heading"><span className="answer-spark" aria-hidden="true">✦</span><h3>판정 결과</h3></div>
+    {!claims.length && <p>검증 가능한 주장을 찾지 못했습니다. 확인할 원문·링크·이미지를 보내주세요.</p>}
+    {claims.map(claim => <section className="answer-section" key={claim.id}>
+      <h4>{claim.quote}</h4><p>{claim.verdict}</p>
+      <AnswerBlockView block={{text: claim.summary, citations: evidence.filter(item => claim.evidenceIds.includes(item.id) && item.claimId === claim.id && item.quoteVerified).map(item => ({sourceId: item.sourceId, quote: item.quote}))}} sources={sources} citationState={createAnswerCitationDisplayState(sources)} verifiedEvidence/>
+      {claim.confirmed.length > 0 && <><h4>확인된 내용</h4><ul>{claim.confirmed.map((text, index) => <li key={index}><SourceAnnotatedText text={text} sources={sources}/></li>)}</ul></>}
+      {claim.unresolved.length > 0 && <><h4>남은 불확실성</h4><ul>{claim.unresolved.map((text, index) => <li key={index}><SourceAnnotatedText text={text} sources={sources}/></li>)}</ul></>}
+      {claim.warnings.length > 0 && <><h4>주의사항</h4><ul>{claim.warnings.map((text, index) => <li key={index}><SourceAnnotatedText text={text} sources={sources}/></li>)}</ul></>}
+    </section>)}
+  </section>;
+}
+
 function JevFactScore({score, verdict, search, engine}: {score: number | null; verdict?: string | null; search?: string | null; engine?: string | null}) {
   const label = engine ?? (search ? `JEV+${search.replace(' 검색', '')}` : 'JEV');
   return <section className="jev-score-reply" aria-label={score === null ? '팩트 점수 없음' : `팩트 점수 ${score}점${verdict ? `, ${verdict}` : ''}`}>
@@ -291,7 +308,7 @@ const VERIFY_STAGES: Array<{id: AgentStage; label: string}> = [
   {id: 'searching', label: '검색'},
   {id: 'reading', label: '읽기'},
   {id: 'verifying', label: '검증'},
-  {id: 'synthesizing', label: '합성'},
+  {id: 'synthesizing', label: '정리'},
 ];
 
 function VerifyTimeline({progress}: {progress: ChatProgress}) {
@@ -334,7 +351,7 @@ function ProgressReply({progress}: {progress: ChatProgress}) {
     {claims !== undefined && (claims.length
       ? <ol className="progress-claim-list">{claims.map(claim => <li className="progress-claim" key={claim.id}>
           <div className="progress-claim-heading"><strong>{claim.quote}</strong><span>{claim.verdict}</span></div>
-          <p>{claim.summary}</p>
+          <p><SourceAnnotatedText text={claim.summary} sources={sources}/></p>
           {claim.citations.length > 0 && <ul className="progress-citations" aria-label="1차 요약의 확인된 인용">{claim.citations.map((citation, index) => {
             const source = sources.find(item => item.id === citation.sourceId);
             const href = source ? safeSourceUrl(source.url) : null;
@@ -391,10 +408,12 @@ export default function FactCheckDashboard() {
   const [notice, setNotice] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
   const storage = useConversationStorage();
+  const clarificationInput = useRef<{epoch: number; text: string; focus: string; image: AttachedImage | null; linkUrl: string | null} | null>(null);
   const request = useRef<AbortController | null>(null);
+  const [handlingRequest, setHandlingRequest] = useState(false);
   const generation = useRef(0);
   const messageCounter = useRef(0);
-  const cancelNoticed = useRef(false);
+  const cancelNoticed = useRef<AbortController | null>(null);
   const [image, setImage] = useState<{mime: AttachedImage['mime']; data: string; preview: string} | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const [configured, setConfigured] = useState<boolean | null>(null);
@@ -429,7 +448,7 @@ export default function FactCheckDashboard() {
   const selected = snapshot?.claims.find(claim => claim.id === state.selectedId);
   const sourceDocs = snapshot?.demo && selected ? documents.filter(document => selected.evidenceIds.includes(document.id)) : [];
   const activeDocument = documents.find(document => document.id === dialog);
-  const busy = state.status === 'loading';
+  const busy = handlingRequest || state.status === 'loading';
   useEffect(() => {
     const refreshConsent = () => {
       const accepted = readExternalConsent();
@@ -452,7 +471,7 @@ export default function FactCheckDashboard() {
     scrollThreadToBottom();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, busy]);
-  const configurationHelp = '서버 설정이 필요합니다. backend/.env 또는 백엔드 실행 환경에 EXPLABS_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY 또는 AI_GATEWAY_API_KEY를 설정한 뒤 서버를 다시 시작해 주세요. 키를 화면이나 채팅에 입력하지 마세요.';
+  const configurationHelp = '서버 설정이 필요합니다. backend/.env 또는 백엔드 실행 환경에 HIVE_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY 또는 AI_GATEWAY_API_KEY를 설정한 뒤 서버를 다시 시작해 주세요. 키를 화면이나 채팅에 입력하지 마세요.';
   const serviceLabel = configured === true ? 'LLM fallback 설정됨 · 접근 미확인' : configured === false ? 'LLM 키 미설정' : configError ? '설정 확인 실패' : '서버 설정 확인 중';
   const modelLabel = MODEL_OPTIONS.find(model => model.id === configuredModel)?.label
     ?? (configured === false ? '모델 미설정' : '모델 확인 중');
@@ -462,7 +481,7 @@ export default function FactCheckDashboard() {
     ...modelOptions.map(model => ({
       value: model.id,
       label: model.label,
-      tag: model.id.startsWith('deepseek-') ? 'Experiential' : model.id.startsWith('gemini-') ? 'Gemini' : 'OpenAI',
+      tag: model.id.startsWith('deepseek-') ? 'Hive' : model.id.startsWith('gemini-') ? 'Gemini' : 'OpenAI',
       disabled: !model.configured,
     })),
   ];
@@ -521,15 +540,16 @@ export default function FactCheckDashboard() {
     generation.current++;
     request.current?.abort();
     request.current = null;
+    setHandlingRequest(false);
   }
 
   function cancelVerification() {
-    if (request.current) cancelNoticed.current = true;
+    if (request.current) cancelNoticed.current = request.current;
     stop();
     dispatch({type: 'cancel'});
     setMessages(messages => messages.filter(message => !message.thinking));
-    setNotice('검증을 중단했습니다.');
-    addMessage({role:'assistant',text:'검증을 중단했습니다.',storageStatus:'cancelled'});
+    setNotice('요청을 중단했습니다.');
+    addMessage({role:'assistant',text:'요청을 중단했습니다.',storageStatus:'cancelled'});
   }
 
   function openConsentDialog(kind: 'external-consent' | 'storage-consent') {
@@ -604,24 +624,23 @@ export default function FactCheckDashboard() {
   }
 
   const detectedLink = firstUrl(draft);
+  const pendingMaterial = !image && !detectedLink && clarificationInput.current?.epoch === storage.epoch ? clarificationInput.current : null;
 
-  type GateDecision = {action: 'verify' | 'reply'; reply: string | null; focus: string | null};
   function gateContext() {
-    return {
-      previousText: liveResult?.text.slice(0, 2000) ?? null,
-      previousClaims: liveResult?.claims.slice(0, 3).map(claim => ({quote: claim.quote.slice(0, 200), verdict: claim.verdict, score: claim.factScore})) ?? [],
-      recentUser: messages.filter(message => message.role === 'user' && message.text).slice(-3).map(message => message.text!.slice(0, 200)),
-    };
+    const context = buildGateContext(messages, liveResult);
+    return pendingMaterial ? {...context, previousText: pendingMaterial.text || '이전에 첨부한 이미지', previousFocus: pendingMaterial.focus, previousLinkUrl: pendingMaterial.linkUrl, previousAttachment: !!pendingMaterial.image} : context;
   }
   async function requestGate(text: string, model: ModelPreference, consent: true, signal: AbortSignal): Promise<GateDecision> {
     requireExternalConsent();
-    const response = await fetch('/api/intent', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({text, context: gateContext(), consent, modelPreference: model}), signal});
-    if (!response.ok) throw new Error('INTENT_FAILED');
-    const value = await response.json() as {action?: unknown; reply?: unknown; focus?: unknown};
+    const response = await fetch('/api/intent', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({text, focus: focus.trim(), image: image ? {mime: image.mime, data: image.data} : pendingMaterial?.image ?? null, linkUrl: detectedLink, context: gateContext(), consent, modelPreference: model}), signal});
+    if (!response.ok) {
+      const failure = await response.json().catch(() => null);
+      if (failure?.code === 'PROVIDER_AUTH_FAILED') throw new FactCheckError('PROVIDER_AUTH_FAILED', '선택한 모델의 인증에 실패했습니다. 서버 API 키와 접근 권한을 확인해 주세요.');
+      throw new Error('INTENT_FAILED');
+    }
+    const value: unknown = await response.json();
     requireExternalConsent();
-    if (value?.action !== 'verify' && value?.action !== 'reply') throw new Error('INTENT_FAILED');
-    if (value.action === 'reply' && typeof value.reply !== 'string') throw new Error('INTENT_FAILED');
-    return {action: value.action, reply: typeof value.reply === 'string' ? value.reply : null, focus: typeof value.focus === 'string' ? value.focus : null};
+    return readGateDecision(value);
   }
   async function requestSummary(text: string, focus: string, linkUrl: string | null, consent: boolean, signal: AbortSignal): Promise<ContentSummary> {
     requireExternalConsent();
@@ -637,10 +656,6 @@ export default function FactCheckDashboard() {
     if (!result || typeof result.title !== 'string' || typeof result.summary !== 'string' || !Array.isArray(result.points)) throw new FactCheckError('PROTOCOL', '요약 결과 형식이 올바르지 않습니다.');
     return {...result, meta: `${modelNameLabel(result.model ?? null)} · 내용 요약`};
   }
-  const prevHasClaims = (liveResult?.claims.length ?? 0) > 0;
-  const continuedThread = !sample && !image && !detectedLink && liveResult !== null && isFollowUpText(draft);
-  const followUp = continuedThread && prevHasClaims;
-
   function loadSample() {
     stop();
     storage.newConversation();
@@ -679,8 +694,10 @@ export default function FactCheckDashboard() {
     if (!draft.trim() && !image) {setNotice('검증할 원문이나 이미지를 입력해 주세요.'); return;}
     if (draft.length > 12000 || focus.length > 500) {setNotice('원문은 12,000자, 확인 요청은 500자 이내로 입력해 주세요.'); return;}
     if (sample) {dispatch({type: 'load', snapshot: {...demoPreview, focus}}); setNotice('합성 예시입니다. 실제 검증 요청은 전송하지 않았습니다.'); return;}
+    const identityOnly = !image && !detectedLink && !focus.trim() && isIdentityQuestion(draft);
+    if (configured === false && !identityOnly) {setNotice(configurationHelp); return;}
     const consent = hasExternalConsent();
-    if (!consent && (image || detectedLink || !isIdentityQuestion(draft))) {
+    if (!consent && !identityOnly) {
       pendingConsent.current = true;
       openConsentDialog('external-consent');
       return;
@@ -691,7 +708,8 @@ export default function FactCheckDashboard() {
     const appendReply = (message:Omit<ChatMessage,'id'>) => addMessage(message,storageEpoch);
     const controller = new AbortController();
     request.current = controller;
-    addMessage({role: 'user', text: followUp ? draft.trim() : draft, meta: continuedThread ? '이전 검증에 이어서 확인' : focus ? `확인 요청: ${focus}` : undefined, ...(image ? {imagePreview: image.preview} : {})});
+    setHandlingRequest(true);
+    addMessage({role: 'user', text: draft, meta: focus ? `확인 요청: ${focus}` : undefined, ...(image ? {imagePreview: image.preview} : {})});
     stickToBottom.current = true;
     const sentDraft = draft;
     setDraft('');
@@ -704,7 +722,7 @@ export default function FactCheckDashboard() {
     const thinkingId = addMessage({role: 'assistant', thinking: true});
     progressMessageId = thinkingId;
     const removeThinking = () => setMessages(messages => messages.filter(message => message.id !== thinkingId));
-    const release = () => {if (request.current === controller) request.current = null;};
+    const release = () => {if (request.current === controller) {request.current = null; setHandlingRequest(false);}};
     const updateProgressMessage = (patch: Partial<ChatProgress>) => {
       if (generation.current !== current) return;
       setMessages(messages => messages.map(message => message.id === progressMessageId
@@ -712,22 +730,8 @@ export default function FactCheckDashboard() {
         : message));
     };
     let gate: GateDecision | null = null;
-    if (!image && isSummarizeRequest(draft) && (detectedLink || draft.trim().length > 200)) {
-      try {
-        const reply = await requestSummary(draft, focus.trim(), detectedLink, consent, controller.signal);
-        if (generation.current !== current || controller.signal.aborted) {release(); return;}
-        removeThinking();
-        appendReply({role: 'assistant', summary: reply});
-        setNotice('내용을 요약했습니다. 사실 확인은 검증으로 요청해 주세요.');
-      } catch (error) {
-        if (generation.current !== current || controller.signal.aborted) return;
-        removeThinking();
-        appendReply({role: 'assistant', text: error instanceof FactCheckError ? `요약 실패: ${error.message}` : '요약 요청에 실패했습니다.', tone: 'error'});
-      }
-      setDraft(''); setFocus(''); setImage(null); release();
-      return;
-    }
-    if (!image && !detectedLink && isIdentityQuestion(draft)) {
+    let gateFailure: unknown = null;
+    if (identityOnly) {
       removeThinking();
       const label = modelSelection === 'auto' ? 'Auto' : (MODEL_OPTIONS.find(model => model.id === modelSelection)?.label ?? modelSelection);
       appendReply({role: 'assistant', text: jevMode ? `현재 ${label} 모드에서 JEV를 함께 사용합니다. 답변 아래에 Jev 점수도 표시됩니다.` : `현재 ${label} 모드입니다.`});
@@ -735,40 +739,70 @@ export default function FactCheckDashboard() {
       return;
     }
     if (!consent) {release(); return;}
-    if (!image && !detectedLink && draft.trim().length <= 120) {
+    setNotice('요청의 의도를 확인하고 있습니다.');
+    {
       try {
         gate = await requestGate(draft.trim(), modelPreference, consent, controller.signal);
-      } catch { gate = null; }
+      } catch (error) { gate = null; gateFailure = error; }
       if (generation.current !== current || controller.signal.aborted) {release(); return;}
     }
-    if (gate?.action === 'reply' && gate.reply) {
-      removeThinking();
-      appendReply({role: 'assistant', text: gate.reply});
+    if (gate && gate.action !== 'verify') {
+      const replyLink = gate.target === 'previous' ? pendingMaterial?.linkUrl : detectedLink;
+      if (gate.action === 'reply' && gate.readLink && replyLink && !image && !pendingMaterial?.image) {
+        try {
+          const reply = await requestSummary(gate.target === 'previous' ? pendingMaterial?.text ?? draft : draft, [gate.target === 'previous' ? pendingMaterial?.focus : '', focus.trim(), draft.trim()].filter(Boolean).join(' / ').slice(0, 500), replyLink, consent, controller.signal);
+          if (generation.current !== current || controller.signal.aborted) {release(); return;}
+          removeThinking();
+          appendReply({role: 'assistant', summary: reply});
+          setNotice('링크 내용을 설명했습니다.');
+        } catch (error) {
+          if (generation.current !== current || controller.signal.aborted) {release(); return;}
+          removeThinking();
+          appendReply({role: 'assistant', text: error instanceof FactCheckError ? error.message : '링크 내용을 읽지 못했습니다.', tone: 'error'});
+          setNotice('링크 내용을 읽지 못했습니다.');
+        }
+      } else {
+        removeThinking();
+        appendReply({role: 'assistant', text: gate.reply!});
+        setNotice(gate.action === 'clarify' ? '원하는 작업을 확인해 주세요.' : '질문에 답변했습니다.');
+      }
+      clarificationInput.current = clarificationMaterial(gate,
+        {epoch: storageEpoch, text: draft, focus, linkUrl: detectedLink, image: image ? {mime: image.mime, data: image.data} : null},
+        pendingMaterial ?? (liveResult ? {epoch: storageEpoch, text: liveResult.text, focus: liveResult.focus, linkUrl: null, image: null} : null));
       setDraft(''); setFocus(''); setImage(null); release();
       return;
     }
-    const gateFocus = gate?.action === 'verify' ? (gate.focus || '') : '';
     if (!gate) {
-      const fallback = classifyChatInput(draft, {hasPrevious: !sample && liveResult !== null, hasAttachment: !!(image || detectedLink)});
+      const fallback = classifyChatInput(draft, {hasAttachment: !!(image || detectedLink), providerAuthFailed: gateFailure instanceof FactCheckError && gateFailure.code === 'PROVIDER_AUTH_FAILED'});
       if (fallback.kind === 'meta') {
         removeThinking();
         appendReply({role: 'assistant', text: fallback.topic === 'history' ? describeHistory(messages, liveResult, DEMO_TEXT) : metaReply(fallback.topic)});
+        setNotice('질문에 답변했습니다.');
         setDraft(''); setFocus(''); setImage(null); release();
         return;
       }
-      if (fallback.kind === 'followup' && !prevHasClaims) {
+      if (fallback.kind === 'verify') {
+        gate = {action: 'verify', target: 'current', reply: null, focus: null};
+      } else {
         removeThinking();
-        appendReply({role: 'assistant', text: '이전 검증에서 검증 가능한 주장을 찾지 못했습니다. 확인할 원문·링크·이미지를 보내주시면 바로 검증하겠습니다.'});
-        setDraft(''); release();
-        return;
+        const failureMessage = gateFailure instanceof FactCheckError && gateFailure.code === 'PROVIDER_AUTH_FAILED'
+          ? gateFailure.message : '요청 의도 파악 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.';
+        appendReply({role: 'assistant', text: failureMessage, tone: 'error'});
+        setNotice(`${failureMessage} 검증을 시작하지 않았습니다.`);
+        clarificationInput.current = pendingMaterial ?? {epoch: storageEpoch, text: draft, focus, linkUrl: detectedLink, image: image ? {mime: image.mime, data: image.data} : null};
+        release(); return;
       }
     }
     if ((jevMode && jevConfigured !== true) || (!jevMode && configured === false)) {removeThinking(); setNotice(configurationHelp); release(); return;}
-    const effectiveText = followUp && liveResult ? liveResult.text : draft;
-    const effectiveFocus = followUp
-      ? [focus.trim(), gateFocus.trim(), draft.trim()].filter(part => part).join(' / ')
-      : [focus.trim(), gateFocus.trim()].filter(part => part).join(' / ');
-    const submitted: FactCheckRequest = {text: effectiveText, focus: effectiveFocus, consent, modelPreference, ...(detectedLink && !followUp ? {linkUrl: detectedLink} : {}), ...(image ? {image: {mime: image.mime, data: image.data}} : {})};
+    const selected = verificationInput(gate, {text: draft, focus, linkUrl: detectedLink, image: image ? {mime: image.mime, data: image.data} : null}, pendingMaterial?.text ?? liveResult?.text ?? null, pendingMaterial ?? undefined);
+    if (!selected) {
+      removeThinking();
+      appendReply({role: 'assistant', text: '다시 검증할 원문·링크·이미지를 보내주시겠어요?'});
+      setNotice('이전 검증 대상을 확인해 주세요.'); release(); return;
+    }
+    const {followUp, ...material} = selected;
+    clarificationInput.current = null;
+    const submitted: FactCheckRequest = {...material, consent, modelPreference};
     if (!followUp) {
       setLiveResult(null);
       dispatch({type: 'reset'});
@@ -832,26 +866,29 @@ export default function FactCheckDashboard() {
       if (!submitted.linkUrl && !submitted.image && (result.text !== submitted.text || result.focus !== submitted.focus)) throw new Error('제출한 원문과 검증 결과가 일치하지 않습니다. 다시 시도해 주세요.');
       setImage(null);
       setDraft('');
-      if (followUp && !result.claims.length) {
+      const keepPrevious = followUp && !result.claims.length && liveResult !== null
+        && submitted.text === liveResult.text && !submitted.image && !submitted.linkUrl;
+      if (keepPrevious) {
+        dispatch({type: 'load', snapshot: liveResult});
         setNotice('추가로 확인된 내용이 없어서 이전 결과를 유지합니다.');
       } else {
         setLiveResult(result);
         dispatch({type: 'load', snapshot: result});
       }
       setMobileTab('results');
-      if (!(followUp && !result.claims.length)) setNotice(result.claims.length ? '검증이 완료되었습니다. 아래에서 출처와 남은 불확실성을 확인해 주세요.' : '검증 가능한 주장을 찾지 못했습니다. 결과의 경고를 확인해 주세요.');
+      if (!keepPrevious) setNotice(result.claims.length ? '검증이 완료되었습니다. 아래에서 출처와 남은 불확실성을 확인해 주세요.' : '검증 가능한 주장을 찾지 못했습니다. 결과의 경고를 확인해 주세요.');
       const reply = composeAssistantReply(result, jevResult);
       const finalMessage: ChatMessage = {id: `message-${messageCounter.current++}`, role: 'assistant', ...reply};
       saveChat(finalMessage,storageEpoch,result);
       if (progressMessageId) {
-        setMessages(messages => [...messages.map(message => message.id === progressMessageId && message.progress
+        setMessages(messages => [...messages.filter(message => message.id !== thinkingId || !message.thinking).map(message => message.id === progressMessageId && message.progress
           ? {...message, progress: {...message.progress, status: '검증 완료', statusElapsedSeconds: elapsedSeconds(), completed: true}}
           : message), finalMessage]);
       } else {
         setMessages(messages => [...messages, finalMessage]);
       }
     } catch (error) {
-      if (cancelNoticed.current) { cancelNoticed.current = false; return; }
+      if (cancelNoticed.current === controller) { cancelNoticed.current = null; return; }
       if (generation.current !== current || controller.signal.aborted) {
         saveChat({role:'assistant', text: controller.signal.aborted ? '검증이 중단되어 결과를 저장하지 못했습니다. 다시 시도해 주세요.' : '검증이 다른 요청으로 대체되어 결과를 저장하지 못했습니다. 다시 시도해 주세요.', tone:'error'}, storageEpoch);
         return;
@@ -875,7 +912,7 @@ export default function FactCheckDashboard() {
         appendReply({role: 'assistant', text: message, tone: 'error'});
       }
     } finally {
-      if (generation.current === current) request.current = null;
+      if (generation.current === current) release();
     }
   }
 
@@ -988,7 +1025,7 @@ export default function FactCheckDashboard() {
               <div className={`chat-bubble ${message.answer ? 'chat-bubble--answer' : ''} ${message.scoreMode === 'jev' ? 'chat-bubble--fact-score' : ''}`}>
                 {message.answer ? (message.scoreMode === 'jev' && message.factScore !== undefined
                   ? <><JevFactScore score={message.factScore} verdict={message.verdict} search={message.search}/><JevSourceList sources={message.sources ?? []}/></>
-                  : <>{message.factScore !== undefined && <JevFactScore score={message.factScore} verdict={message.verdict} engine={message.scoreEngine ?? '종합'}/>}<AnswerOverview answer={message.answer} sources={message.sources ?? []} messageId={message.id}/></>) : message.progress ? <ProgressReply progress={message.progress}/> : message.thinking ? <ThinkingLoader label={notice || '근거를 모으고 사실 여부를 대조하고 있습니다.'}/> : message.summary ? <SummaryReply summary={message.summary}/> : <>{message.imagePreview && <img className="chat-image-preview" src={message.imagePreview} alt="사용자가 보낸 이미지"/>}{message.text ? <p>{message.text}</p> : null}</>}
+                  : <>{message.factScore !== undefined && <JevFactScore score={message.factScore} verdict={message.verdict} engine={message.scoreEngine ?? '종합'}/>} {message.answer.status === 'judgment_only' ? <JudgmentReply claims={message.judgments ?? []} evidence={message.evidence ?? []} sources={message.sources ?? []}/> : <AnswerOverview answer={message.answer} sources={message.sources ?? []} messageId={message.id}/>}</>) : message.progress ? <ProgressReply progress={message.progress}/> : message.thinking ? <ThinkingLoader label={notice || '근거를 모으고 사실 여부를 대조하고 있습니다.'}/> : message.summary ? <SummaryReply summary={message.summary}/> : <>{message.imagePreview && <img className="chat-image-preview" src={message.imagePreview} alt="사용자가 보낸 이미지"/>}{message.text ? <p>{message.text}</p> : null}</>}
                 {message.meta && <small>{message.meta}</small>}
               </div>
             </motion.div>)}
@@ -1015,11 +1052,11 @@ export default function FactCheckDashboard() {
               <div className="chat-toolbar">
                 <div className="chat-tools"><button type="button" className="chat-tool" onClick={() => fileInput.current?.click()} disabled={busy} aria-label="이미지 첨부"><Icon name="file" size={16}/><span>이미지</span></button><input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" aria-label="이미지 첨부" tabIndex={-1} onChange={async event => {const file = event.target.files?.[0]; event.target.value = ''; if (!file || busy) return; const attached = await downscaleImage(file); if (attached) attachImage(attached);}}/><label className="chat-focus-control" htmlFor="focus-request"><Icon name="lens" size={15}/><span>확인 요청</span><input id="focus-request" value={focus} maxLength={500} onChange={event => setFocus(event.target.value)} placeholder="선택 입력"/></label></div>
                 <div className="chat-send-group">
-                  <span className="chat-jev-toggle"><BellToggle pressed={jevMode} onChange={setJevMode} disabled={busy || jevConfigured !== true || !!image} offLabel="JEV OFF" onLabel=" JEV ON" revealBounce={0.3} waves={false} badge={false} size="sm" label="JEV 모드"/></span>
+                  <span className="chat-jev-toggle"><BellToggle pressed={jevMode} onChange={setJevMode} disabled={busy || configured !== true || jevConfigured !== true || !!image} offLabel="JEV OFF" onLabel=" JEV ON" revealBounce={0.3} waves={false} badge={false} size="sm" label="JEV 모드"/></span>
                   <div className="chat-model-control"><span className="sr-only">답변 모델</span><GlideSelect options={modelPickerOptions} value={modelSelection} onChange={value => setModelSelection(value as ModelSelection)} disabled={busy} ariaLabel="답변 모델 선택" ariaDescribedBy="model-preference-help" size="sm" radius={9} menuWidth={260} placement="top" align="right"/></div>
                   <span id="model-preference-help" className="sr-only">Auto는 설정된 모델을 순서대로 시도합니다. 개별 모델은 단독 사용합니다. JEV 스위치를 켜면 TypeSafe 빠른 판정 점수도 함께 표시하며 이미지는 지원하지 않습니다.</span>
                   {busy
-                    ? <button type="button" className="chat-send is-stop" onClick={cancelVerification} aria-label="검증 중단"><Icon name="close" size={19}/></button>
+                    ? <button type="button" className="chat-send is-stop" onClick={cancelVerification} aria-label="요청 중단"><Icon name="close" size={19}/></button>
                     : <button type="submit" className="chat-send" disabled={!draft.trim() && !image} aria-label={sample ? '예시 다시 보기' : '팩트 검증 시작'}><Icon name="arrow" size={19}/></button>}
                 </div>
               </div>
@@ -1027,7 +1064,7 @@ export default function FactCheckDashboard() {
             <div className="chat-footer"><div>{sample && <span className="sample-state"><Icon name="shield" size={14}/>합성 예시는 외부로 전송하지 않습니다.</span>}<button type="button" className="sample-chip" onClick={() => externalConsent ? revokeExternalConsent() : openConsentDialog('external-consent')}>{externalConsent ? '외부 전송 동의 철회' : '외부 전송 안내'}</button></div><button type="button" className="sample-chip" onClick={loadSample}>예시로 시작하기 <Icon name="arrow" size={14}/></button></div>
           </form>
           {!storagePreferenceSaved && <p className="dialog-notice" role="alert">브라우저 저장이 차단되어 선택 변경은 현재 화면에서만 적용됩니다. 이전 저장 설정이 남아 있으면 새로고침 후 다시 적용될 수 있으므로 사이트 데이터 설정도 확인해 주세요.</p>}
-          <div className={`chat-status ${busy ? 'is-busy' : ''}`} role="status" aria-live="polite">{busy ? notice || '검증을 진행하고 있습니다.' : notice || (configured === false && jevConfigured !== true ? configurationHelp : '원문을 입력하거나 예시로 시작해 근거를 확인해 보세요.')}</div>
+          <div className={`chat-status ${busy ? 'is-busy' : ''}`} role="status" aria-live="polite">{busy ? notice || '요청을 처리하고 있습니다.' : notice || (configured === false ? configurationHelp : '원문을 입력하거나 예시로 시작해 근거를 확인해 보세요.')}</div>
         </section>
 
         <section id="review" className="review-section" aria-labelledby="review-heading">
@@ -1043,7 +1080,7 @@ export default function FactCheckDashboard() {
             <div className={`dashboard-detail-layout mobile-${mobileTab}`}>
               <Panel as="article" className="original-panel"><div className="panel-top"><h3><Icon name="file" size={17}/><BlurText text="원문"/></h3><span>{snapshot.demo ? '합성 문서' : '제출한 원문'}</span></div><div className="original-content"><span className="article-kicker">{snapshot.demo ? '문화 행사 · 가상의 사례' : '검증 요청 시점의 원문'}</span><h3>{snapshot.demo ? '달빛시 가을빛 축제, 알아두면 좋은 내용' : '검증한 원문'}</h3><p className="article-byline">{snapshot.demo ? 'True or Not 예시 편집실 · 실제 기사 아님' : '원문을 보존한 상태로 주장을 추출했습니다.'}</p><div className="original-text">{original}</div><div className="highlight-legend"><span/>강조된 문장을 선택하면 오른쪽 근거가 바뀝니다.</div>{snapshot.focus && <div className="focus-note"><Icon name="lens" size={17}/><div><strong>확인하고 싶은 내용</strong><p>{snapshot.focus}</p><small>{snapshot.demo ? '예시의 비교 범위를 보여드립니다.' : '검증의 참고 범위로 전달했습니다.'}</small></div></div>}</div><div className="original-footer"><Icon name="shield" size={15}/>{snapshot.demo ? '실제 인물·지역·사건과 무관한 합성 예시입니다.' : '원문에서 추출한 최대 3개의 주장을 검증합니다.'}</div></Panel>
               <Panel className="evidence-panel"><div className="panel-top"><h3><Icon name="lens" size={18}/><BlurText text="선택한 주장과 근거"/></h3><span>{snapshot.demo ? '예시 비교' : '수집된 원문 비교'}</span></div><AnimatePresence mode="wait" initial={false}><motion.div className="detail-content" key={selected?.id || 'empty'} initial={reduce ? false : {opacity: 0, y: 5}} animate={{opacity: 1, y: 0}} exit={{opacity: 0}} transition={{duration: reduce ? 0 : 0.18}}>{selected ? <>
-                <div className="result-overview"><span className="article-kicker">선택한 주장</span><h3>{selected.quote}</h3><Badge claim={selected}/><p>{selected.summary}</p></div>
+                <div className="result-overview"><span className="article-kicker">선택한 주장</span><h3>{selected.quote}</h3><Badge claim={selected}/><p><SourceAnnotatedText text={selected.summary} sources={liveResult?.sources ?? []}/></p></div>
                 <div className="source-content"><div className="source-heading"><h4>근거 출처</h4><span>{snapshot.demo ? `${sourceDocs.length}개 연결` : `${selectedEvidence.length}개 인용 · ${liveResult?.sources.length ?? 0}개 검색`}</span></div>
                   {snapshot.demo
                     ? sourceDocs.length
@@ -1089,7 +1126,7 @@ export default function FactCheckDashboard() {
     <Modal open={dialog !== null} title={dialog === 'external-consent' ? '외부 서비스 전송 동의' : dialog === 'storage-consent' ? '대화 저장 설정' : activeDocument?.title || (dialog === 'guide' ? '근거를 읽는 세 가지 원칙' : '검증 안내')} onClose={() => {pendingConsent.current = false; setDialog(null);}} footer={dialog === 'external-consent' ? <div className="dialog-done"><button type="button" className="secondary-button" onClick={() => {pendingConsent.current = false; setDialog(null);}}>동의하지 않음</button><button type="button" className="secondary-button" onClick={acceptExternalConsent}>동의하고 시작</button></div> : dialog === 'storage-consent' ? <div className="dialog-done"><button type="button" className="secondary-button" onClick={() => setDialog(null)}>취소</button><button type="button" className="secondary-button" onClick={() => {applyStorageConsent(); setDialog(null);}}>설정 저장</button></div> : undefined}>
       {dialog === 'external-consent' || dialog === 'storage-consent' ? <div className="about-copy">
         {dialog === 'external-consent' ? <>
-        <p>의도 분석·검증·요약을 위해 입력한 텍스트, 확인 요청, 링크, 첨부 이미지와 필요한 이전 대화 맥락을 서버로 전송합니다. 설정된 AI 서비스(Experiential 게이트웨이를 통한 DeepSeek·OpenAI·Google Gemini·AI Gateway), TypeSafe JEV, 검색 서비스(Tavily 및 모델 제공자의 검색 기능)가 요청 처리에 사용될 수 있습니다. 링크와 검색된 공개 페이지는 서버에서 읽으며 YouTube 기능은 Google 서비스에 영상 ID를 전송해 자막·공개 영상 정보·댓글을 조회할 수 있습니다.</p>
+        <p>의도 분석·검증·요약을 위해 입력한 텍스트, 확인 요청, 링크, 첨부 이미지와 필요한 이전 대화 맥락을 서버로 전송합니다. 설정된 AI 서비스(하이브(Hive) API를 통한 DeepSeek·OpenAI·Google Gemini·AI Gateway), TypeSafe JEV, 검색 서비스(Tavily 및 모델 제공자의 검색 기능)가 요청 처리에 사용될 수 있습니다. 링크와 검색된 공개 페이지는 서버에서 읽으며 YouTube 기능은 Google 서비스에 영상 ID를 전송해 자막·공개 영상 정보·댓글을 조회할 수 있습니다.</p>
         <p>민감정보·제3자의 비공개 정보는 입력하지 마세요. 외부 제공자의 처리·보관 정책은 <a href="/privacy" target="_blank" rel="noopener noreferrer">개인정보 처리방침</a>과 <a href="/terms" target="_blank" rel="noopener noreferrer">이용약관</a>에서 확인해 주세요. 이 안내는 법적 검토 완료를 의미하지 않습니다.</p>
         <p>전송 동의는 이 브라우저에서 안내 버전만 저장해 다음 질문과 새로고침 후에도 유지합니다. 동의 철회·사이트 데이터 삭제·안내 범위 변경 시 다시 확인하며, 브라우저 저장이 차단되면 현재 화면에서만 유지합니다. 거절하면 외부 호출을 하지 않고 입력을 보존합니다. 대화 저장은 별도 선택이며 자동으로 켜지지 않습니다.</p>
         </> : <p>대화 저장은 외부 전송 동의와 별개입니다. 저장을 꺼도 기존 기록은 남으며 대화 목록의 삭제 버튼으로 지울 수 있습니다.</p>}

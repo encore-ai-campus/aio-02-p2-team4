@@ -199,7 +199,7 @@ with sync_playwright() as runtime:
         before = len(posts)
         send("새 게이트웨이 안내 재확인")
         expect(dialog).to_be_visible()
-        expect(dialog).to_contain_text("Experiential")
+        expect(dialog).to_contain_text("하이브")
         expect(dialog.get_by_label("이 브라우저에서 대화 저장")).to_be_checked()
         assert len(posts) == before
         dialog.get_by_role("button", name="동의하지 않음", exact=True).click()

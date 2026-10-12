@@ -32,7 +32,7 @@ Copy-Item .env.example .env
 
 | 변수 | 용도 |
 |---|---|
-| `EXPLABS_API_KEY` | DeepSeek V4.1 Flash MAX를 Experiential 게이트웨이로 호출합니다. 서버 전용입니다. 키는 Experiential Settings → API Keys에서 생성합니다. |
+| `HIVE_API_KEY` | DeepSeek V4.1 Flash MAX를 하이브(Hive) API로 호출합니다. 서버 전용입니다. 키는 Hive Service API Keys에서 생성합니다. |
 | `GEMINI_API_KEY` | Gemini 3.8 Flash 및 Gemini 3.7 Flash 사용에 필요합니다. |
 | `OPENAI_API_KEY` | GPT-6 Luna 사용과 OpenAI 웹 검색 경로에 필요합니다. |
 | `TYPESAFE_API_KEY` | JEV 고속 판정(TypeSafe System One) 사용에 필요합니다. 없으면 JEV 스위치가 비활성화되고 일반 LLM 검증만 동작합니다. |
@@ -41,7 +41,7 @@ Copy-Item .env.example .env
 | `YOUTUBE_API_KEY` | 선택 사항입니다. 검색 결과에 YouTube 영상이 있을 때 영상 정보와 공개 댓글을 가져오는 데 사용합니다. |
 | `FINNHUB_API_KEY` | 선택 사항입니다. 주가 조회 어댑터에 사용합니다. |
 
-Experiential·OpenAI·Gemini 키 중 하나 이상을 설정해야 LLM 검증을 시작할 수 있습니다. 모델을 `auto`로 선택하면 키가 설정된 모델만 다음 순서로 시도합니다.
+Hive·OpenAI·Gemini 키 중 하나 이상을 설정해야 LLM 검증을 시작할 수 있습니다. 모델을 `auto`로 선택하면 키가 설정된 모델만 다음 순서로 시도합니다.
 
 1. DeepSeek V4.1 Flash (`deepseek-v4.1-flash`, `reasoning_effort=max`)
 2. GPT-6 Luna (`max`, Fast 처리; 추출·검색·판정·개요·요약 전 경로 동일)
@@ -50,9 +50,9 @@ Experiential·OpenAI·Gemini 키 중 하나 이상을 설정해야 LLM 검증을
 
 `auto`가 아닌 특정 모델을 선택하면 구조화 LLM 호출은 그 모델만 호출합니다. 선택한 모델이 설정되어 있지 않거나 응답하지 않으면 다른 모델로 자동 전환하지 않습니다. DeepSeek는 공급자 내장 웹 검색이 없어 검색 단계만 기존 Tavily 또는 GPT/Gemini 검색을 사용합니다. DeepSeek 단독 설정으로 검색이 필요한 검증을 실행하려면 `TAVILY_API_KEY` 또는 기존 검색 모델의 키도 필요합니다.
 
-DeepSeek의 모든 텍스트·이미지 구조화 호출은 `https://api.experientiallabs.ai/v1/chat/completions`와 `EXPLABS_API_KEY`만 사용합니다. GPT/Gemini의 엔드포인트와 키는 변경하지 않습니다. DeepSeek에는 JSON 모드와 스키마 안내를 보내고 기존 Pydantic 검증을 유지합니다. MAX 추론과 JSON 출력의 공통 예산은 최소 16,000토큰이며, 단계에서 더 큰 예산을 요청하면 해당 값을 보존합니다. 이는 최대 허용량이며 매번 모두 사용하지는 않습니다. 긴 출력은 시간·비용이 늘 수 있고 기존 90초 호출 제한은 유지됩니다. 중단·거절·MAX 무시·스키마 오류는 여전히 실패로 처리합니다. [공식 호환성 안내](https://platform.experientiallabs.ai/docs/openai-compatibility), [연결 QA 기록](../docs/qa/실행기록/2026-10-05-DeepSeek.md), [출력 한도 보완 기록](../docs/qa/실행기록/2026-10-05-DeepSeek-출력한도.md)을 참고하세요.
+DeepSeek의 모든 텍스트·이미지 구조화 호출은 `https://api-cdn.thehive.ai/api/v3/chat/completions`와 `HIVE_API_KEY`만 사용합니다. 모델 키는 `deepseek-ai/deepseek-v4.1-flash`입니다. GPT/Gemini의 엔드포인트와 키는 변경하지 않습니다. DeepSeek에는 JSON 모드와 스키마 안내를 보내고 기존 Pydantic 검증을 유지합니다. MAX 추론과 JSON 출력의 공통 예산은 최소 16,000토큰(`max_completion_tokens`)이며, 단계에서 더 큰 예산을 요청하면 해당 값을 보존합니다. 이는 최대 허용량이며 매번 모두 사용하지는 않습니다. 긴 출력은 시간·비용이 늘 수 있고 기존 90초 호출 제한은 유지됩니다. 중단·거절·스키마 오류는 여전히 실패로 처리합니다. [공식 호환성 안내](https://docs.thehive.ai/docs/chat-completions-openai-compatible-llms), [DeepSeek 모델 안내](https://docs.thehive.ai/docs/deepseek-v41-flash)를 참고하세요.
 
-현재 Render Blueprint의 `EXPLABS_API_KEY`는 `sync: false`입니다. 기존 서비스에 새 변수를 추가해도 자동으로 값을 묻거나 로컬 키를 복사하지 않으므로, 배포 시 백엔드 Environment에 직접 설정해야 합니다. 프런트엔드에는 설정하지 않습니다.
+현재 Render Blueprint의 `HIVE_API_KEY`는 `sync: false`입니다. 기존 서비스에 새 변수를 추가해도 자동으로 값을 묻거나 로컬 키를 복사하지 않으므로, 배포 시 백엔드 Environment에 직접 설정해야 합니다. 프런트엔드에는 설정하지 않습니다.
 
 ## 검색·검증 흐름
 

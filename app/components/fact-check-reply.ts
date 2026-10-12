@@ -1,4 +1,4 @@
-import type { AnswerCitation, FactCheckAnswer, FactCheckResult, FactSource } from '../lib/fact-check-contract';
+import type { AnswerCitation, FactCheckAnswer, FactCheckResult, FactSource, FactClaim, FactEvidence } from '../lib/fact-check-contract';
 // @ts-ignore -- explicit extension is required by the Node native test runner.
 import { MODEL_OPTIONS } from '../lib/fact-check-contract.ts';
 // @ts-ignore -- explicit extension is required by the Node native test runner.
@@ -10,6 +10,9 @@ export type AssistantReply = {
   answer: FactCheckAnswer;
   sources: FactSource[];
   meta: string;
+  text?: string;
+  judgments?: FactClaim[];
+  evidence?: FactEvidence[];
   factScore?: number | null;
   verdict?: string | null;
   search?: string | null;
@@ -53,9 +56,9 @@ export function createAnswerCitationDisplayState(sources: FactSource[] = []): An
   };
 }
 
-export function resolveAnswerCitationSource(citation: AnswerCitation, sources: FactSource[]): ResolvedAnswerCitation | null {
+export function resolveAnswerCitationSource(citation: AnswerCitation, sources: FactSource[], verifiedEvidence = false): ResolvedAnswerCitation | null {
   const source = sources.find(item => item.id === citation.sourceId);
-  if (!source || source.accessStatus !== 'verified' || source.sourceType === '유튜브') return null;
+  if (!source || source.accessStatus !== 'verified' || (!verifiedEvidence && source.sourceType === '유튜브')) return null;
   const href = safeSourceUrl(source.url);
   return href ? {source, href} : null;
 }
@@ -64,6 +67,7 @@ export function presentAnswerCitations(
   citations: AnswerCitation[],
   sources: FactSource[],
   state: AnswerCitationDisplayState,
+  verifiedEvidence = false,
 ): AnswerCitationDisplay[] {
   const seenInBlock = new Set<string>();
   const displays: AnswerCitationDisplay[] = [];
@@ -78,7 +82,7 @@ export function presentAnswerCitations(
       state.sourceNumbers.set(citation.sourceId, number);
     }
 
-    const resolved = resolveAnswerCitationSource(citation, sources);
+    const resolved = resolveAnswerCitationSource(citation, sources, verifiedEvidence);
     if (!resolved) {
       displays.push({citation, number, source: null, href: null, linkTarget: 'unavailable'});
       continue;
@@ -100,6 +104,12 @@ export function composeAssistantReply(result: ReplyResult, jevResult: ReplyResul
     sources: result.sources,
     meta,
   };
+  if (result.answer.status === 'judgment_only') {
+    reply.judgments = result.claims;
+    reply.evidence = result.evidence;
+    reply.text = result.claims.map(claim => `${claim.verdict} · ${claim.summary}`).join('\n')
+      || '검증 가능한 주장을 찾지 못했습니다. 확인할 원문·링크·이미지를 보내주세요.';
+  }
   const claim = jevResult?.claims[0];
   if (claim) {
     reply.factScore = claim.factScore ?? null;

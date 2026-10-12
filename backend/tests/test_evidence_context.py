@@ -6,8 +6,7 @@ import json
 import httpx
 import pytest
 
-from answer_synthesis import synthesize_answer
-from providers import LLMProvider, ProviderCallError
+from providers import LLMProvider
 from verification import verify_claims
 from contracts import FactCheckResponse
 from pydantic import SecretStr
@@ -48,11 +47,6 @@ def judgment(quote=SUPPORT):
                         "relation": "supports", "comparison": "same"}]}]}
 
 
-def answer(quote=SUPPORT):
-    block = {"text": "제공된 출처의 기록입니다.", "citations": [{"sourceId": "s1", "quote": quote}]}
-    return {"status": "grounded", "overview": block, "sections": [], "conclusion": block}
-
-
 def run_stage(stage, state, response, seen):
     def handler(request):
         body = json.loads(request.content)
@@ -84,41 +78,6 @@ def test_verification_selects_late_support_counter_and_nearby_conditions():
     assert state == before
 
 
-def test_synthesis_reuses_validated_quote_translation_and_context_not_bulk():
-    body = "DO-NOT-SEND-LEAD " + FILLER * 75 + CONDITION + " " + SUPPORT + " " + FILLER * 180
-    state = state_for(body)
-    seen = {}
-    result = run_stage(synthesize_answer, state, answer(), seen)
-    packet = json.dumps(seen, ensure_ascii=False)
-    assert "DO-NOT-SEND-LEAD" not in packet and "DO-NOT-SEND-SEARCH-SNIPPET" not in packet
-    assert CONDITION in packet and SUPPORT in packet
-    assert seen["evidence"][0]["quoteTranslation"] == "Atlas 강은 2024년에 기록적인 수위에 도달했습니다."
-    assert seen["sources"][0]["contextOnly"] is False
-    assert result["overview"]["citations"][0]["quote"] == SUPPORT
-    assert len(packet) < 4_000
-
-
-def test_forecast_context_preserves_speaker_date_negation_and_conditions():
-    forecast = "In 2025 Demis forecast AGI around 2030."
-    caveat = "This is not a guaranteed date and depends on reasoning progress."
-    body = "DO-NOT-SEND-LEAD " + FILLER * 180 + forecast + " " + caveat
-    state = state_for(body, "prediction")
-    state["text"] = "AGI는 2030년 안에 오나?"
-    state["claims"][0]["quote"] = state["text"]
-    state["claims"][0]["evidenceIds"] = []
-    state["searchQueries"] = {"c1": "AGI 2030년"}
-    state["evidence"] = []
-    seen = {}
-    result = run_stage(synthesize_answer, state, answer(forecast), seen)
-    packet = json.dumps(seen["sources"], ensure_ascii=False)
-    assert forecast in packet and caveat in packet
-    assert "DO-NOT-SEND-LEAD" not in packet
-    assert seen["sources"][0]["contextOnly"] is True
-    assert seen["claims"][0]["verdictCode"] == "not_checkable"
-    assert seen["evidence"] == []
-    assert result["status"] == "grounded"
-
-
 def test_verification_rejects_a_real_quote_outside_the_supplied_passages():
     outside = "The bakery opened a branch in another city."
     body = outside + " " + FILLER * 180 + SUPPORT
@@ -126,40 +85,6 @@ def test_verification_rejects_a_real_quote_outside_the_supplied_passages():
     assert result["evidence"] == []
     assert result["claims"][0]["verdictCode"] == "insufficient_evidence"
     assert result["claims"][0]["warnings"]
-
-
-def test_synthesis_rejects_a_real_quote_outside_the_supplied_packet():
-    outside = "The bakery opened a branch in another city."
-    body = outside + " " + FILLER * 60 + SUPPORT + " " + FILLER * 120
-    with pytest.raises(ProviderCallError):
-        run_stage(synthesize_answer, state_for(body), answer(outside), {})
-
-
-def test_forecast_keywords_do_not_match_inside_unrelated_english_words():
-    forecast = "AGI is forecast for 2030, not a confirmed schedule."
-    body = "MAGIC TRICKS ARE UNRELATED. " * 600 + forecast
-    state = state_for(body, "prediction")
-    state["claims"][0]["quote"] = "AGI 2030"
-    state["claims"][0]["evidenceIds"] = []
-    state["searchQueries"] = {"c1": "AGI 2030"}
-    state["evidence"] = []
-    seen = {}
-    result = run_stage(synthesize_answer, state, answer(forecast), seen)
-    assert forecast in json.dumps(seen["sources"])
-    assert sum(len(p["text"]) for p in seen["sources"][0]["passages"]) < 1_000
-    assert result["status"] == "grounded"
-
-
-def test_no_keyword_match_has_explicit_prefix_fallback():
-    body = "A different topic has no matching entity. " + FILLER * 180
-    state = state_for(body, "prediction")
-    state["claims"][0]["evidenceIds"] = []
-    state["evidence"] = []
-    seen = {}
-    run_stage(synthesize_answer, state, answer("A different topic has no matching entity."), seen)
-    assert seen["sources"][0]["selection"] == "fallback"
-    assert seen["sources"][0]["contextOnly"] is True
-    assert seen["sources"][0]["passages"] == [{"start": 0, "end": 6_000, "text": body[:6_000]}]
 
 
 def test_overbroad_match_keeps_bounded_fallback_instead_of_silently_dropping_windows():
@@ -171,73 +96,7 @@ def test_overbroad_match_keeps_bounded_fallback_instead_of_silently_dropping_win
     assert seen["sources"][0]["passages"] == [{"start": 0, "end": 6_000, "text": body[:6_000]}]
 
 
-@pytest.mark.parametrize("field,value", [("quoteVerified", False), ("id", "not-linked"), ("claimId", "other")])
-def test_unverified_or_unlinked_evidence_is_not_promoted_to_a_verified_packet(field, value):
-    state = state_for(FILLER * 100 + SUPPORT)
-    state["evidence"][0][field] = value
-    seen = {}
-    run_stage(synthesize_answer, state, answer(), seen)
-    assert seen["evidence"] == []
-    assert seen["sources"][0]["contextOnly"] is True
-
-
-def test_all_validated_support_and_counter_quotes_survive_a_large_packet():
-    first = "Atlas observation supports the finding: " + "a" * 1_800
-    second = "Atlas observation contradicts another year: " + "b" * 1_800
-    third = "Atlas observation supplies a material condition: " + "c" * 1_800
-    body = FILLER * 40 + first + " " + FILLER * 40 + second + " " + FILLER * 40 + third
-    state = state_for(body)
-    state["claims"][0]["evidenceIds"] = ["e1", "e2", "e3"]
-    state["evidence"] = [{"id": f"e{index}", "claimId": "c1", "sourceId": "s1", "quote": quote,
-                          "quoteVerified": True, "relation": relation}
-                         for index, (quote, relation) in enumerate([(first, "supports"), (second, "contradicts"),
-                                                                   (third, "context")], 1)]
-    reply = answer(first)
-    reply["overview"]["citations"] = [{"sourceId": "s1", "quote": q} for q in (first, second, third)]
-    seen = {}
-    run_stage(synthesize_answer, state, reply, seen)
-    assert [item["relation"] for item in seen["evidence"]] == ["supports", "contradicts", "context"]
-    assert len(seen["sources"][0]["passages"]) == 3
-    assert sum(len(p["text"]) for p in seen["sources"][0]["passages"]) > 6_000
-    packet = json.dumps(seen, ensure_ascii=False)
-    assert all(quote in packet for quote in (first, second, third))
-
-
-def test_whitespace_normalized_evidence_keeps_exact_original_passage_offsets():
-    original = "The Atlas river reached\nrecord levels in 2024."
-    body = FILLER * 100 + original
-    state = state_for(body)
-    seen = {}
-    run_stage(synthesize_answer, state, answer(original), seen)
-    assert seen["evidence"][0]["quote"] == SUPPORT
-    passage = seen["sources"][0]["passages"][0]
-    assert body[passage["start"]:passage["end"]] == passage["text"]
-    assert original in passage["text"]
-
-
-def test_source_excerpt_offsets_are_original_character_indices_not_utf16_units():
-    body = "🍀" * 1_000 + SUPPORT
-    seen = {}
-    run_stage(synthesize_answer, state_for(body), answer(), seen)
-    assert seen["sources"][0]["passages"] == [{"start": 550, "end": 1_046,
-                                               "text": "🍀" * 450 + SUPPORT}]
-
-
-def test_repeated_verified_quote_keeps_each_distinct_date_and_place_context():
-    repeated = "The Atlas river reached record levels."
-    first_context = "This report concerns Seoul in 1990."
-    second_context = "This report concerns Busan in 2024."
-    body = first_context + " " + repeated + " " + FILLER * 180 + second_context + " " + repeated
-    state = state_for(body)
-    state["evidence"][0]["quote"] = repeated
-    seen = {}
-    run_stage(synthesize_answer, state, answer(repeated), seen)
-    packet = json.dumps(seen["sources"], ensure_ascii=False)
-    assert first_context in packet and second_context in packet
-    assert len(seen["sources"][0]["passages"]) == 2
-
-
-@pytest.mark.parametrize("kind,expected_calls", [("fact", 2), ("prediction", 2)])
+@pytest.mark.parametrize("kind,expected_calls", [("fact", 2), ("prediction", 1)])
 def test_real_runtime_stream_finishes_with_late_grounded_passages(monkeypatch, kind, expected_calls):
     quote = SUPPORT if kind == "fact" else "In 2025 Demis forecast AGI around 2030."
     state = state_for("DO-NOT-SEND-LEAD " + FILLER * 180 + quote + " This is not a guaranteed schedule.", kind)
@@ -249,7 +108,7 @@ def test_real_runtime_stream_finishes_with_late_grounded_passages(monkeypatch, k
     def handler(request):
         body = json.loads(request.content)
         requests.append(body)
-        assert body["model"] == "deepseek-v4.1-flash" and body["reasoning_effort"] == "max"
+        assert body["model"] == "deepseek-ai/deepseek-v4.1-flash" and body["reasoning_effort"] == "max"
         if len(requests) == 1:
             value = {"claims": [{"quote": extracted_quote, "kind": kind, "searchQuery": query}]}
         elif kind == "fact" and len(requests) == 2:
@@ -262,7 +121,7 @@ def test_real_runtime_stream_finishes_with_late_grounded_passages(monkeypatch, k
     real_client = httpx.AsyncClient
     monkeypatch.setattr(runtime.httpx, "AsyncClient", lambda *a, **kw:
                         real_client(*a, transport=httpx.MockTransport(handler), **kw))
-    settings = Settings(api_key=SecretStr(""), explabs_api_key=SecretStr("test-only"))
+    settings = Settings(api_key=SecretStr(""), hive_api_key=SecretStr("test-only"))
     adapters = make_runtime_adapters(settings)
 
     async def search(current):
@@ -283,10 +142,11 @@ def test_real_runtime_stream_finishes_with_late_grounded_passages(monkeypatch, k
     assert events[-1]["type"] == "result"
     assert [event["type"] for event in events].count("preview") == 1
     result = FactCheckResponse.model_validate({"result": events[-1]["result"]}).result
-    assert result.answer.status == "grounded"
-    assert result.answer.overview.citations[0].quote == quote
-    assert result.answer.model == (None if kind == "fact" else "deepseek-v4.1-flash")
-    assert result.answer.reasoning == (None if kind == "fact" else "max")
+    assert result.answer.status == "judgment_only"
+    assert result.answer.overview is None
+    assert result.answer.model is None and result.answer.reasoning is None
+    if kind == "fact":
+        assert result.evidence[0].quote == quote and result.evidence[0].quoteVerified
     assert result.sources[0].url == "https://example.org/record"
     assert result.claims[0].verdictCode == ("mostly_supported" if kind == "fact" else "not_checkable")
     assert all("DO-NOT-SEND" not in json.dumps(json.loads(r["messages"][1]["content"]), ensure_ascii=False)

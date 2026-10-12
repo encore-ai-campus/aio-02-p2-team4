@@ -1,9 +1,7 @@
 """Runtime assembly tests; explicit adapters keep the five-node graph offline."""
 import asyncio
-import pytest
 
 from contracts import FactCheckResponse
-from providers import ProviderCallError
 from runtime import RuntimeAdapters, Settings, build_fact_check_result, build_runtime_workflow, make_runtime_adapters
 from pydantic import SecretStr
 
@@ -61,7 +59,7 @@ def test_forecast_keywords_reach_search_through_graph_without_leaking_into_resul
                 return await verify_claims(state, api_key="test-only", client=client)
 
             async def synthesize(state):
-                raise AssertionError("No readable source text must skip answer synthesis")
+                return {"answer": {"status": "judgment_only", "overview": None, "sections": [], "conclusion": None, "model": None, "reasoning": None}, "answerModel": None, "answerReasoning": None}
 
             graph = build_runtime_workflow(
                 Settings(api_key=SecretStr("test-only")),
@@ -78,7 +76,7 @@ def test_forecast_keywords_reach_search_through_graph_without_leaking_into_resul
     result = FactCheckResponse.model_validate({"result": state["result"]}).result
     assert result.claims[0].kind == "prediction"
     assert result.claims[0].verdictCode == "not_checkable"
-    assert result.answer.status == "insufficient_evidence"
+    assert result.answer.status == "judgment_only"
     assert "searchQueries" not in result.model_dump()
     assert "searchQuery" not in result.claims[0].model_dump()
 
@@ -157,149 +155,6 @@ def test_runtime_graph_assembles_valid_final_result_after_five_stages():
     assert "sourceTexts" in state
 
 
-def test_forecast_synthesis_preserves_prediction_and_citations(monkeypatch):
-    import json
-    import re
-
-    import httpx
-    import runtime
-    from runtime import make_runtime_adapters
-
-    question = "AGI는 2030년 안에 오나?"
-    early_text = "Several researchers expect AGI-capable systems before 2030 if current scaling continues."
-    uncertainty_text = "The field has no agreed definition of AGI, and experts cannot provide a reliable timeline."
-    source_texts = {"s1": early_text, "s2": uncertainty_text}
-    sources = [
-        {
-            "id": "s1", "url": "https://example.org/early-forecast", "title": "Early timeline forecast",
-            "publisher": "Example Lab", "publishedAt": None,
-            "retrievedAt": "2026-09-23T00:00:00+00:00", "accessStatus": "verified",
-            "sourceType": "기사", "originGroupId": None,
-        },
-        {
-            "id": "s2", "url": "https://example.org/agi-uncertainty", "title": "AGI timeline uncertainty",
-            "publisher": "Example Institute", "publishedAt": None,
-            "retrievedAt": "2026-09-23T00:00:00+00:00", "accessStatus": "verified",
-            "sourceType": "기사", "originGroupId": None,
-        },
-    ]
-    early_quote = "expect AGI-capable systems before 2030 if current scaling continues"
-    uncertainty_quote = "no agreed definition of AGI, and experts cannot provide a reliable timeline"
-    answer_draft = {
-        "status": "grounded",
-        "overview": {
-            "text": "일부 전망은 현재 추세가 이어지면 2030년 이전에 AGI 역량이 나타날 수 있다고 봅니다.",
-            "citations": [{"sourceId": "s1", "quote": early_quote}],
-        },
-        "sections": [
-            {
-                "kind": "supporting",
-                "title": "조기 도래 전망",
-                "items": [{
-                    "text": "한 연구자 그룹은 현재 추세가 이어지는 경우를 전제로 전망합니다.",
-                    "citations": [{"sourceId": "s1", "quote": early_quote}],
-                }],
-            },
-            {
-                "kind": "uncertainty",
-                "title": "남은 불확실성",
-                "items": [{
-                    "text": "AGI 정의에 합의가 없고 신뢰할 수 있는 일정도 제시되지 않았습니다.",
-                    "citations": [{"sourceId": "s2", "quote": uncertainty_quote}],
-                }],
-            },
-        ],
-        "conclusion": {
-            "text": "따라서 2030년 안에 도래할지는 확정된 사실이 아니라 불확실한 예측입니다.",
-            "citations": [{"sourceId": "s2", "quote": uncertainty_quote}],
-        },
-    }
-    attempted_models = []
-
-    def provider_response(request):
-        body = json.loads(request.content)
-        attempted_models.append(body["model"])
-        assert body["model"] in {"gpt-6-luna", "gemini-3.8-flash"}
-        synthesis_input = json.loads(body["input"])
-        assert synthesis_input["question"] == question
-        assert {item["id"]: item["passages"][0]["text"] for item in synthesis_input["sources"]} == source_texts
-        assert all(item["contextOnly"] for item in synthesis_input["sources"])
-        return httpx.Response(200, json={
-            "status": "completed",
-            "steps": [{
-                "type": "model_output",
-                "content": [{"type": "text", "text": json.dumps(answer_draft, ensure_ascii=False)}],
-            }],
-        })
-
-    real_async_client = httpx.AsyncClient
-
-    def mock_client(*args, **kwargs):
-        return real_async_client(*args, transport=httpx.MockTransport(provider_response), **kwargs)
-
-    monkeypatch.setattr(runtime.httpx, "AsyncClient", mock_client)
-    settings = Settings(
-        api_key=SecretStr("openai-test-only"),
-        gemini_api_key=SecretStr("gemini-test-only"),
-    )
-    provider_adapters = make_runtime_adapters(settings)
-
-    async def extract(state):
-        return {"claims": [{
-            "id": "c1", "quote": question, "start": 0, "end": len(question),
-            "kind": "prediction",
-        }]}
-
-    async def search(state):
-        return {"sources": sources}
-
-    async def read(state):
-        return {"sources": sources, "sourceTexts": source_texts}
-
-    async def verify(state):
-        claim = state["claims"][0]
-        return {
-            "claims": [{
-                **claim, "verdictCode": "not_checkable", "verdict": "검증 대상 아님",
-                "tone": "neutral", "summary": "미래 예측은 현재 사실처럼 확정할 수 없습니다.",
-                "confirmed": [], "unresolved": ["실현 시기는 불확실합니다."],
-                "warnings": ["예측은 사실 판정과 구분합니다."], "evidenceIds": [],
-            }],
-            "evidence": [], "llmModel": "gpt-6-luna", "llmReasoning": "max",
-        }
-
-    graph = build_runtime_workflow(
-        settings,
-        adapters=RuntimeAdapters(
-            extract=extract, search=search, read=read, verify=verify,
-            synthesize=provider_adapters.synthesize,
-        ),
-    )
-    state = asyncio.run(graph.ainvoke({"text": question, "focus": "", "consent": True}))
-    result = FactCheckResponse.model_validate({"result": state["result"]}).result
-
-    assert attempted_models == ["gpt-6-luna", "gemini-3.8-flash"]
-    assert result.claims[0].kind == "prediction"
-    assert result.claims[0].verdictCode == "not_checkable"
-    assert result.claims[0].summary == "미래 예측은 현재 사실처럼 확정할 수 없습니다."
-    assert result.evidence == []
-    assert result.model == "gpt-6-luna"
-    assert result.answer.model == "gemini-3.8-flash"
-    assert result.answer.status == "grounded"
-    assert [section.kind for section in result.answer.sections] == ["supporting", "uncertainty"]
-
-    blocks = [result.answer.overview, result.answer.conclusion]
-    blocks.extend(item for section in result.answer.sections for item in section.items)
-    citations = [citation for block in blocks for citation in block.citations]
-    assert citations
-    assert {citation.sourceId for citation in citations} == {"s1", "s2"}
-    assert all(citation.quote in source_texts[citation.sourceId] for citation in citations)
-    answer_text = " ".join(block.text for block in blocks)
-    assert re.search(r"\b\d+(?:\.\d+)?\s?%", answer_text) is None
-    assert "확률" not in answer_text
-    assert "전문가들의 의견이 일치합니다" not in answer_text
-
-
 def test_result_reports_provider_used_by_the_final_stage():
     result = build_fact_check_result(
         {
@@ -336,7 +191,7 @@ def test_result_reports_provider_used_by_the_final_stage():
     assert result.answer.reasoning == "high"
 
 
-def test_runtime_synthesis_skips_provider_without_verified_source_text(monkeypatch):
+def test_runtime_finalization_skips_provider_without_verified_source_text(monkeypatch):
     import httpx
     import runtime
     from runtime import make_runtime_adapters
@@ -358,98 +213,12 @@ def test_runtime_synthesis_skips_provider_without_verified_source_text(monkeypat
         "sourceTexts": {"s1": "  "},
     }))
 
-    assert result["answer"]["status"] == "insufficient_evidence"
+    assert result["answer"]["status"] == "judgment_only"
     assert result["answerModel"] is None
     assert result["answerReasoning"] is None
 
 
-@pytest.mark.parametrize("mixed_forecast", [False, True])
-def test_verified_result_skips_synthesis_or_survives_provider_failure_for_mixed_forecast(monkeypatch, mixed_forecast):
-    import json
-    import httpx
-    import runtime
-    from runtime import make_runtime_adapters
-
-    attempted_models = []
-    real_async_client = httpx.AsyncClient
-
-    def failing_provider(request):
-        attempted_models.append(json.loads(request.content)["model"])
-        return httpx.Response(503, json={"error": "TEST_ONLY provider unavailable"})
-
-    def mock_client(*args, **kwargs):
-        return real_async_client(
-            *args, transport=httpx.MockTransport(failing_provider), **kwargs,
-        )
-
-    monkeypatch.setattr(runtime.httpx, "AsyncClient", mock_client)
-    settings = Settings(
-        api_key=SecretStr("openai-test-only"),
-        gemini_api_key=SecretStr("gemini-test-only"),
-    )
-    provider_adapters = make_runtime_adapters(settings)
-    source = {
-        "id": "s1", "url": "https://example.org/source", "title": "Example source",
-        "publisher": "example.org", "publishedAt": None,
-        "retrievedAt": "2026-09-20T00:00:00+00:00", "accessStatus": "verified",
-        "sourceType": "기사", "originGroupId": None,
-    }
-
-    async def extract(state):
-        return {}
-
-    async def search(state):
-        return {"sources": [source]}
-
-    async def read(state):
-        return {"sources": [source], "sourceTexts": {"s1": "The source supports this claim."}}
-
-    async def verify(state):
-        update = {
-            "claims": [{
-                "id": "c1", "quote": "Claim", "start": 0, "end": 5, "kind": "fact",
-                "verdictCode": "mostly_supported", "verdict": "대체로 확인됨",
-                "tone": "positive", "summary": "원문이 주장을 뒷받침합니다.",
-                "confirmed": ["Claim"], "unresolved": [], "warnings": [],
-                "evidenceIds": ["e1"],
-            }],
-            "evidence": [{
-                "id": "e1", "claimId": "c1", "sourceId": "s1",
-                "quote": "The source supports this claim.",
-                "quoteVerified": True, "relation": "supports",
-            }],
-            "llmModel": "gpt-6-luna", "llmReasoning": "max",
-        }
-        if mixed_forecast:
-            update["claims"].append({
-                "id": "c2", "quote": "Forecast", "start": 6, "end": 14, "kind": "prediction",
-                "verdictCode": "not_checkable", "verdict": "검증 대상 아님", "tone": "neutral",
-                "summary": "미래 예측은 확정하지 않았습니다.", "confirmed": [],
-                "unresolved": ["실현 시기는 미확정입니다."], "warnings": [], "evidenceIds": [],
-            })
-        return update
-
-    graph = build_runtime_workflow(
-        settings,
-        adapters=RuntimeAdapters(
-            extract=extract, search=search, read=read, verify=verify,
-            synthesize=provider_adapters.synthesize,
-        ),
-    )
-    state = asyncio.run(graph.ainvoke({"text": "Claim Forecast" if mixed_forecast else "Claim", "focus": "", "consent": True}))
-    result = FactCheckResponse.model_validate({"result": state["result"]}).result
-
-    assert attempted_models == (["gpt-6-luna", "gemini-3.8-flash", "gemini-3.7-flash"] if mixed_forecast else [])
-    assert [claim.id for claim in result.claims] == (["c1", "c2"] if mixed_forecast else ["c1"])
-    assert [evidence.id for evidence in result.evidence] == ["e1"]
-    assert result.model == "gpt-6-luna"
-    assert result.reasoning == "max"
-    assert result.answer.status == ("synthesis_failed" if mixed_forecast else "grounded")
-    assert result.answer.model is None
-    assert result.answer.reasoning is None
-
-
-def test_synthesis_stage_failure_does_not_return_intermediate_result():
+def test_finalization_failure_does_not_return_intermediate_result():
     import pytest
 
     source = {
@@ -538,123 +307,3 @@ def test_youtube_comment_warning_skipped_for_transcript_sources():
         "댓글" in warning
         for warning in _result_warnings(youtube, youtube_transcript_verified=True)
     )
-
-
-def test_incomplete_openai_synthesis_retries_with_smaller_cap(monkeypatch):
-    import json
-    import httpx
-    import pytest
-    import runtime
-    from runtime import make_runtime_adapters
-
-    caps = []
-    real_async_client = httpx.AsyncClient
-
-    def always_incomplete(request):
-        caps.append(json.loads(request.content)["max_output_tokens"])
-        return httpx.Response(200, json={"status": "incomplete", "output": []})
-
-    def mock_client(*args, **kwargs):
-        return real_async_client(
-            *args, transport=httpx.MockTransport(always_incomplete), **kwargs,
-        )
-
-    monkeypatch.setattr(runtime.httpx, "AsyncClient", mock_client)
-    adapters = make_runtime_adapters(Settings(api_key=SecretStr("openai-test-only")))
-
-    with pytest.raises(ValueError, match="SYNTHESIS_FAILED"):
-        asyncio.run(adapters.synthesize({
-            "sources": [{
-                "id": "s1", "url": "https://example.org/source", "title": "Example",
-                "publisher": "example.org", "accessStatus": "verified",
-                "sourceType": "기사",
-            }],
-            "sourceTexts": {"s1": "The source supports this claim."},
-        }))
-
-    assert caps == [4000, 2000]
-
-
-def test_single_model_synthesis_failure_preserves_verified_claims():
-    source = {
-        "id": "s1", "url": "https://example.org/source", "title": "Example source",
-        "publisher": "example.org", "publishedAt": None,
-        "retrievedAt": "2026-09-20T00:00:00+00:00", "accessStatus": "verified",
-        "sourceType": "기사", "originGroupId": None,
-    }
-
-    async def extract(state):
-        return {}
-
-    async def search(state):
-        return {"sources": [source]}
-
-    async def read(state):
-        return {"sources": [source], "sourceTexts": {"s1": "The source supports this claim."}}
-
-    async def verify(state):
-        return {
-            "claims": [{
-                "id": "c1", "quote": "Claim", "start": 0, "end": 5, "kind": "fact",
-                "verdictCode": "mostly_supported", "verdict": "대체로 확인됨",
-                "tone": "positive", "summary": "원문이 주장을 뒷받침합니다.",
-                "confirmed": ["Claim"], "unresolved": [], "warnings": [],
-                "evidenceIds": ["e1"],
-            }],
-            "evidence": [{
-                "id": "e1", "claimId": "c1", "sourceId": "s1",
-                "quote": "The source supports this claim.",
-                "quoteVerified": True, "relation": "supports",
-            }],
-            "llmModel": "gpt-6-luna", "llmReasoning": "max",
-        }
-
-    async def synthesize(state):
-        raise ValueError("MODEL_FAILED")
-
-    graph = build_runtime_workflow(
-        Settings(api_key=SecretStr("test-only")),
-        adapters=RuntimeAdapters(
-            extract=extract, search=search, read=read, verify=verify, synthesize=synthesize,
-        ),
-    )
-    state = asyncio.run(graph.ainvoke({"text": "Claim", "focus": "", "consent": True}))
-    result = FactCheckResponse.model_validate({"result": state["result"]}).result
-
-    assert [claim.id for claim in result.claims] == ["c1"]
-    assert [evidence.id for evidence in result.evidence] == ["e1"]
-    assert result.answer.status == "synthesis_failed"
-    assert result.answer.model is None
-    assert result.answer.reasoning is None
-
-
-def test_incomplete_synthesis_retries_once_with_smaller_budget(monkeypatch):
-    import runtime
-    from runtime import make_runtime_adapters
-
-    calls = []
-
-    async def fake_synthesize(state, client=None, provider=None, max_output_tokens=4000):
-        calls.append(max_output_tokens)
-        if len(calls) == 1:
-            raise ProviderCallError("Incomplete response")
-        return {
-            "status": "grounded", "overview": None, "sections": [],
-            "conclusion": None, "model": "gpt-6-luna", "reasoning": "max",
-        }
-
-    monkeypatch.setattr(runtime, "synthesize_answer", fake_synthesize)
-    adapters = make_runtime_adapters(Settings(api_key=SecretStr("openai-test-only")))
-
-    result = asyncio.run(adapters.synthesize({
-        "sources": [{
-            "id": "s1", "url": "https://example.org/source", "title": "Example",
-            "publisher": "example.org", "accessStatus": "verified",
-            "sourceType": "기사",
-        }],
-        "sourceTexts": {"s1": "The source supports this claim."},
-    }))
-
-    assert calls == [4000, 2000]
-    assert result["answerModel"] == "gpt-6-luna"
-    assert result["answerReasoning"] == "max"

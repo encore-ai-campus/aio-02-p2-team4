@@ -27,7 +27,7 @@ npm run dev
 
 ## 자동 검증 (CI)
 
-현재 Auto 모델 순서는 DeepSeek V4.1 Flash MAX → GPT-6 Luna MAX/Fast → Gemini 3.8/3.7 Flash HIGH입니다. DeepSeek는 서버 전용 `EXPLABS_API_KEY`와 Experiential 게이트웨이를 사용하며 기존 모델·검색 도구를 보존합니다. 설정과 단독 모델 선택의 검색 예외는 [백엔드 안내](backend/README.md#환경-변수), 실호출과 검증 범위는 [DeepSeek QA 기록](docs/qa/실행기록/2026-10-05-DeepSeek.md)을 참고하세요.
+현재 Auto 모델 순서는 DeepSeek V4.1 Flash MAX → GPT-6 Luna MAX/Fast → Gemini 3.8/3.7 Flash HIGH입니다. DeepSeek는 서버 전용 `HIVE_API_KEY`와 하이브(Hive) API를 사용하며 기존 모델·검색 도구를 보존합니다. 설정과 단독 모델 선택의 검색 예외는 [백엔드 안내](backend/README.md#환경-변수), 실호출과 검증 범위는 [Hive 연결 QA 기록](docs/qa/실행기록/2026-10-10-Hive-DeepSeek.md)을 참고하세요.
 
 [GitHub Actions CI](.github/workflows/ci.yml)는 main 푸시·PR·수동 실행 시 프론트엔드 테스트·타입 검사·프로덕션 빌드와 백엔드 잠금 파일 검사·pytest를 병렬 실행합니다. Node.js 24와 Python 3.12를 사용하며 `npm ci`와 `uv sync --frozen`으로 잠금 파일 기준 의존성을 설치합니다.
 
