@@ -108,7 +108,8 @@ def test_real_runtime_stream_finishes_with_late_grounded_passages(monkeypatch, k
     def handler(request):
         body = json.loads(request.content)
         requests.append(body)
-        assert body["model"] == "deepseek-ai/deepseek-v4.1-flash" and body["reasoning_effort"] == "max"
+        expected_reasoning = "max" if len(requests) == 1 else "high"
+        assert body["model"] == "deepseek-ai/deepseek-v4.1-flash" and body["reasoning_effort"] == expected_reasoning
         if len(requests) == 1:
             value = {"claims": [{"quote": extracted_quote, "kind": kind, "searchQuery": query}]}
         elif kind == "fact" and len(requests) == 2:

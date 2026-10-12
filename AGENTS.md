@@ -8,10 +8,6 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 <!-- END:nextjs-agent-rules -->
 
-## Verification cleanup
-
-- After browser or build verification, stop temporary development/test servers and close test browser windows unless the user explicitly requests that they remain open.
-
 
 # 1. 지침
 
