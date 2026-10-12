@@ -747,3 +747,27 @@ button, p, h3, dd { overflow-wrap: anywhere; }
 .sidebar:has(.conversation-history) { overflow-y: auto; }
 @media (min-width: 961px) { .conversation-mobile { display: none; } }
 @media (max-width: 960px) { .sidebar .conversation-history { display: none; } }
+
+/* Glass backgrounds are grouped here so this treatment can be reverted independently. */
+.sidebar { background-color: rgb(12 15 19 / .76); backdrop-filter: blur(18px) saturate(115%); }
+.panel-host:not(.chat-hero) { background-color: rgb(17 21 26 / .7); backdrop-filter: blur(16px) saturate(115%); }
+.chat-bubble { background-color: rgb(23 27 32 / .78); backdrop-filter: blur(12px) saturate(115%); }
+.chat-message.is-user .chat-bubble { background-color: rgb(50 98 187 / .78); }
+.chat-input-shell { background-color: rgb(28 31 35 / .78); backdrop-filter: blur(14px) saturate(115%); }
+.fact-score-guide-popover { background-color: rgb(18 25 30 / .9); backdrop-filter: blur(14px) saturate(115%); }
+.fact-score-guide-popover th { background-color: rgb(38 54 59 / .9); }
+.fact-score-guide-popover td { background-color: rgb(24 33 38 / .82); }
+.fact-score-guide-popover tbody tr.is-current td { background-color: rgb(40 65 63 / .86); }
+.claim-score-popover { background-color: rgb(16 20 24 / .9); }
+.dialog { background-color: rgb(22 27 33 / .92); backdrop-filter: blur(16px) saturate(115%); }
+.document-fulltext { background-color: rgb(13 17 22 / .76); backdrop-filter: blur(10px) saturate(110%); }
+.conversation-mobile { background-color: rgb(23 23 23 / .74); backdrop-filter: blur(12px) saturate(110%); }
+.conversation-earlier { background-color: rgb(34 34 34 / .78); backdrop-filter: blur(10px) saturate(110%); }
+.conversation-error { background-color: rgb(17 21 26 / .72); backdrop-filter: blur(10px) saturate(110%); }
+.conversation-new { backdrop-filter: blur(10px) saturate(110%); }
+.mobile-tabs { background-color: rgb(16 21 26 / .76); backdrop-filter: blur(12px) saturate(110%); }
+.mobile-tabs-indicator { background-color: rgb(38 51 55 / .86); backdrop-filter: blur(8px) saturate(110%); }
+.thread-to-bottom, .background-toggle { background-color: rgb(13 17 22 / .82); backdrop-filter: blur(12px) saturate(115%); }
+.source-card, .source-index-card, .youtube-context-card, .youtube-comment-context,
+.detail-blocks > div, .progress-claim, .claim-score-option, .fact-score,
+.answer-section, .answer-conclusion, .answer-insufficient { backdrop-filter: blur(8px) saturate(110%); }
