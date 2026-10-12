@@ -293,7 +293,7 @@ function VerifyTimeline({progress}: {progress: ChatProgress}) {
   const currentIndex = progress.completed
     ? VERIFY_STAGES.length
     : Math.max(0, VERIFY_STAGES.findIndex(stage => stage.id === progress.statusStage));
-  const visibleStages = VERIFY_STAGES.slice(0, Math.min(VERIFY_STAGES.length, Math.max(3, currentIndex + 1)));
+  const visibleStages = VERIFY_STAGES;
   const [travel, setTravel] = useState<{from: number; to: number; key: number} | null>(null);
   const prevRef = useRef(currentIndex);
   useEffect(() => {
