@@ -24,6 +24,24 @@ test('accepts recovered partial answers only with complete cited blocks', async 
  recovered.answer.overview=null;
  assert.equal(validResult(recovered),false);
 });
+test('partially true results cannot attach false or missing evidence to a part', () => {
+  const parts = [
+    {statement:'첫 항목입니다.',verdictCode:'mostly_supported',verdict:'대체로 확인됨',factScore:90,summary:'원문으로 확인했습니다.',evidenceIds:['e1']},
+    {statement:'둘째 항목입니다.',verdictCode:'contradicted',verdict:'반박하는 근거 확인',factScore:20,summary:'원문으로 반박했습니다.',confirmed:['근거에서 확인한 정정 내용입니다.'],evidenceIds:['e2']},
+  ];
+  const payload = {...result,claims:[{id:'c1',quote:result.text,start:0,end:result.text.length,kind:'fact',factScore:55,scoreBand:'neutral',scoreLabel:'중립',verdictCode:'partially_supported',verdict:'일부 사실 · 일부 거짓',tone:'neutral',summary:'부분 판정입니다.',confirmed:[],refuted:['둘째 항목입니다.'],unresolved:[],warnings:[],evidenceIds:['e1','e2'],parts}],sources:[verifiedSource],evidence:[{id:'e1',claimId:'c1',sourceId:'s1',quote:'첫 항목의 시험 인용입니다.',quoteVerified:true,relation:'supports'},{id:'e2',claimId:'c1',sourceId:'s1',quote:'둘째 항목의 시험 인용입니다.',quoteVerified:true,relation:'contradicts'}]};
+  assert.equal(validResult(payload),true);
+  for (const confirmed of ['잘못된 형식', [1], Array(6).fill('내용')]) {
+    const malformed = structuredClone(payload);
+    malformed.claims[0].parts[1].confirmed = confirmed;
+    assert.equal(validResult(malformed),false);
+  }
+  for (const ids of [['e1'],['missing'],[]]) {
+    const malformed = structuredClone(payload);
+    malformed.claims[0].parts[1].evidenceIds = ids;
+    assert.equal(validResult(malformed),false);
+  }
+});
 function response(text, width=1) {
   const bytes = new TextEncoder().encode(text);
   return new Response(new ReadableStream({start(c) {for(let i=0;i<bytes.length;i+=width)c.enqueue(bytes.slice(i,i+width));c.close();}}), {headers:{'content-type':'application/x-ndjson'}});

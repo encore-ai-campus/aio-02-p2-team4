@@ -29,6 +29,7 @@ from recovery import review_recovery
 from schemas import FactCheckRequest
 from search import _source_identity, apply_shared_origin_groups, build_search_query, origin_group_for_url, search_sources, source_type_for_url
 from sources import SourceReadResult, fetch_public_text, read_sources
+from kosis import fetch_nationwide_monthly_cpi, is_cpi_claim
 from verification import (
     _empty_judgments,
     ground_judgments,
@@ -76,6 +77,7 @@ class Settings(BaseModel):
     tavily_api_key: SecretStr = SecretStr("")
     typesafe_api_key: SecretStr = SecretStr("")
     finnhub_api_key: SecretStr = SecretStr("")
+    kosis_api_key: SecretStr = SecretStr("")
 
 
 def load_settings(env_path: Path | None = None) -> Settings:
@@ -89,6 +91,7 @@ def load_settings(env_path: Path | None = None) -> Settings:
     tavily_key = os.environ.get("TAVILY_API_KEY", values.get("TAVILY_API_KEY") or "")
     gateway_key = os.environ.get("TYPESAFE_API_KEY", values.get("TYPESAFE_API_KEY") or "")
     finnhub_key = os.environ.get("FINNHUB_API_KEY", values.get("FINNHUB_API_KEY") or "")
+    kosis_key = os.environ.get("KOSIS_API_KEY", values.get("KOSIS_API_KEY") or "")
     return Settings(
         api_key=SecretStr(key.strip()),
         hive_api_key=SecretStr(hive_key.strip()),
@@ -97,6 +100,7 @@ def load_settings(env_path: Path | None = None) -> Settings:
         tavily_api_key=SecretStr(tavily_key.strip()),
         typesafe_api_key=SecretStr(gateway_key.strip()),
         finnhub_api_key=SecretStr(finnhub_key.strip()),
+        kosis_api_key=SecretStr(kosis_key.strip()),
     )
 
 
@@ -266,6 +270,26 @@ def make_runtime_adapters(settings: Settings) -> RuntimeAdapters:
 
         symbols = detect_stock_symbols(state.get("text", ""), state.get("focus", ""))
         search_state = {**state, "stockSymbols": symbols} if symbols else state
+
+        async def with_kosis(update):
+            kosis_key = settings.kosis_api_key.get_secret_value()
+            if not kosis_key.strip() or not is_cpi_claim(
+                state.get("claims", []), state.get("focus", "")
+            ):
+                return update
+            try:
+                async with httpx.AsyncClient(timeout=15.0, trust_env=False) as client:
+                    kosis_source = await fetch_nationwide_monthly_cpi(
+                        api_key=kosis_key, client=client
+                    )
+            except (httpx.HTTPError, ValueError, TypeError):
+                kosis_source = None
+            if kosis_source is None:
+                return update
+            source, _ = kosis_source
+            source["id"] = "skosis"
+            return {**update, "sources": [source, *update.get("sources", [])][:6]}
+
         tavily_key = settings.tavily_api_key.get_secret_value()
         if tavily_key.strip():
             try:
@@ -276,6 +300,7 @@ def make_runtime_adapters(settings: Settings) -> RuntimeAdapters:
                 update = None
             if update is not None:
                 market = state.get("market") if state.get("recoveryCount") else await _fetch_market(symbols, settings)
+                update = await with_kosis(update)
                 return {**update, "stockSymbols": symbols, "market": market}
         update = await with_fallback(
             search_state,
@@ -284,6 +309,7 @@ def make_runtime_adapters(settings: Settings) -> RuntimeAdapters:
             ),
             "SEARCH_FAILED",
         )
+        update = await with_kosis(update)
         market = state.get("market") if state.get("recoveryCount") else await _fetch_market(symbols, settings)
         return {**update, "stockSymbols": symbols, "market": market}
 
@@ -678,6 +704,18 @@ async def run_jev_fast_check(
 
     if read_result is None:
         state["sources"] = sources[:6]
+        kosis_key = settings.kosis_api_key.get_secret_value()
+        if consent and kosis_key.strip() and is_cpi_claim(state["claims"], focus):
+            try:
+                kosis_source = await fetch_nationwide_monthly_cpi(
+                    api_key=kosis_key, client=client
+                )
+            except (httpx.HTTPError, ValueError, TypeError):
+                kosis_source = None
+            if kosis_source is not None:
+                kosis_item, _ = kosis_source
+                kosis_item["id"] = "skosis"
+                state["sources"] = [kosis_item, *state["sources"]][:6]
         youtube_key = settings.youtube_api_key.get_secret_value()
         if youtube_key.strip() and any(
             isinstance(source, dict) and source.get("sourceType") == "유튜브"

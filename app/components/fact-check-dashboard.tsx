@@ -8,7 +8,7 @@ import type { Claim } from './demo-state';
 import { MODEL_OPTIONS } from '../lib/fact-check-contract';
 import type { AgentStage, AnswerBlock, AttachedImage, ContentSummary, FactCheckAnswer, FactClaim, FactEvidence, FactCheckRequest, FactCheckResult, FactSource, ModelOption, ModelPreference, ProgressClaim, ProgressSource } from '../lib/fact-check-contract';
 import { sourceDiscoveryLabel } from '../lib/source-discovery';
-import { scoreBand, scoreLabel } from '../lib/fact-score';
+import { scoreBand, scoreLabel, verdictBreakdown } from '../lib/fact-score';
 import { stripYoutubeApiDataForExport } from '../lib/youtube-context';
 import { FactCheckError, faviconUrlFor, readFactCheckStream, safeSourceUrl, validResult } from './fact-check-client';
 import { composeAssistantReply, createAnswerCitationDisplayState, modelLabel as modelNameLabel, presentAnswerCitations } from './fact-check-reply';
@@ -201,6 +201,24 @@ function AnswerOverview({answer, sources}: {answer: FactCheckAnswer; sources: Fa
   </section>;
 }
 
+function TruthBreakdown({claims, evidence, sources}: {claims: FactClaim[]; evidence: FactEvidence[]; sources: FactSource[]}) {
+  const groups = verdictBreakdown(claims);
+  return <div className="truth-breakdown" aria-label="사실과 거짓 구분">
+    {(['confirmed', 'refuted', 'unresolved'] as const).map(key => groups[key].length > 0 && <section className={`answer-section${key === 'refuted' ? ' answer-section--counter' : key === 'unresolved' ? ' answer-section--uncertainty' : ''}`} key={key}>
+      <h4>{{confirmed: '사실로 확인된 내용', refuted: '거짓으로 확인된 내용', unresolved: '판단을 보류한 내용'}[key]}</h4>
+      <ul className="answer-section-items">{groups[key].map((item, index) => {
+        const citations = evidence.filter(quote => item.evidenceIds.includes(quote.id) && quote.claimId === item.claimId && quote.quoteVerified).map(quote => ({sourceId: quote.sourceId, quote: quote.quote}));
+        const corrected = key === 'refuted' && item.confirmed.length > 0;
+        return <li key={index}>
+          {key === 'refuted' && <h4>틀린 부분</h4>}
+          <AnswerBlockView block={{text: item.statement + (item.summary ? ` ${item.summary}` : ''), citations: corrected ? [] : citations}} sources={sources} citationState={createAnswerCitationDisplayState(sources)} verifiedEvidence/>
+          {corrected && <><h4>근거상 올바른 내용</h4><AnswerBlockView block={{text: item.confirmed.join(' '), citations}} sources={sources} citationState={createAnswerCitationDisplayState(sources)} verifiedEvidence/></>}
+        </li>;
+      })}</ul>
+    </section>)}
+  </div>;
+}
+
 function JudgmentReply({claims, evidence, sources}: {claims: FactClaim[]; evidence: FactEvidence[]; sources: FactSource[]}) {
   return <section className="ai-answer" aria-label="판정 결과">
     <div className="ai-answer-heading"><span className="answer-spark" aria-hidden="true">✦</span><h3>판정 결과</h3></div>
@@ -208,8 +226,10 @@ function JudgmentReply({claims, evidence, sources}: {claims: FactClaim[]; eviden
     {claims.map(claim => <section className="answer-section" key={claim.id}>
       <h4>{claim.quote}</h4><p>{claim.verdict}</p>
       <AnswerBlockView block={{text: claim.summary, citations: evidence.filter(item => claim.evidenceIds.includes(item.id) && item.claimId === claim.id && item.quoteVerified).map(item => ({sourceId: item.sourceId, quote: item.quote}))}} sources={sources} citationState={createAnswerCitationDisplayState(sources)} verifiedEvidence/>
-      {claim.confirmed.length > 0 && <><h4>확인된 내용</h4><ul>{claim.confirmed.map((text, index) => <li key={index}><SourceAnnotatedText text={text} sources={sources}/></li>)}</ul></>}
-      {claim.unresolved.length > 0 && <><h4>남은 불확실성</h4><ul>{claim.unresolved.map((text, index) => <li key={index}><SourceAnnotatedText text={text} sources={sources}/></li>)}</ul></>}
+      {claim.evidenceIds.length > 0 && (claim.parts?.length || claim.refuted?.length) ? <TruthBreakdown claims={[claim]} evidence={evidence} sources={sources}/> : <>
+        {claim.confirmed.length > 0 && <><h4>확인된 내용</h4><ul>{claim.confirmed.map((text, index) => <li key={index}><SourceAnnotatedText text={text} sources={sources}/></li>)}</ul></>}
+        {claim.unresolved.length > 0 && <><h4>남은 불확실성</h4><ul>{claim.unresolved.map((text, index) => <li key={index}><SourceAnnotatedText text={text} sources={sources}/></li>)}</ul></>}
+      </>}
       {claim.warnings.length > 0 && <><h4>주의사항</h4><ul>{claim.warnings.map((text, index) => <li key={index}><SourceAnnotatedText text={text} sources={sources}/></li>)}</ul></>}
     </section>)}
   </section>;
@@ -492,6 +512,7 @@ export default function FactCheckDashboard() {
   const selectedEvidence = selected && liveResult ? liveResult.evidence.filter(evidence => evidence.claimId === selected.id && selected.evidenceIds.includes(evidence.id)) : [];
   const selectedSourceIds = new Set(snapshot?.demo ? sourceDocs.map(source => source.id) : selectedEvidence.map(evidence => evidence.sourceId));
   const selectedLiveClaim = selected && liveResult ? liveResult.claims.find(claim => claim.id === selected.id) : null;
+  const canShowCorrection = Boolean(selectedLiveClaim && selectedEvidence.length > 0 && (selectedLiveClaim.parts?.length || selectedLiveClaim.refuted?.length));
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1059,7 +1080,8 @@ export default function FactCheckDashboard() {
               </div>
               <Panel className="evidence-panel"><div className="panel-top"><h3 className="scramble-panel-title"><Icon name="lens" size={18}/><ScrambleText>선택한 주장과 근거</ScrambleText></h3><span>{snapshot.demo ? '예시 비교' : '수집된 원문 비교'}</span></div><AnimatePresence mode="wait" initial={false}><motion.div className="detail-content" key={selected?.id || 'empty'} initial={reduce ? false : {opacity: 0, y: 5}} animate={{opacity: 1, y: 0}} exit={{opacity: 0}} transition={{duration: reduce ? 0 : 0.18}}>{selected ? <>
                 <div className="result-overview"><span className="article-kicker">선택한 주장</span><h3>{selected.quote}</h3><Badge claim={selected}/><p><SourceAnnotatedText text={selected.summary} sources={liveResult?.sources ?? []}/></p></div>
-                {!snapshot.demo && selectedLiveClaim && <div className="detail-blocks"><div><h4><ScrambleText>확인된 내용</ScrambleText></h4>{selectedLiveClaim.confirmed.length ? <ul>{selectedLiveClaim.confirmed.map((text, index) => <li key={index}>{text}</li>)}</ul> : <p>직접 확인된 내용이 없습니다.</p>}</div><div><h4><ScrambleText>남은 불확실성</ScrambleText></h4>{selectedLiveClaim.unresolved.length ? <ul>{selectedLiveClaim.unresolved.map((text, index) => <li key={index}>{text}</li>)}</ul> : <p>현재 기록된 불확실성이 없습니다.</p>}</div>{selectedLiveClaim.warnings.length > 0 && <div><h4><ScrambleText>주장별 주의사항</ScrambleText></h4><ul>{selectedLiveClaim.warnings.map((text, index) => <li key={index}>{text}</li>)}</ul></div>}</div>}
+                {!snapshot.demo && selectedLiveClaim && canShowCorrection && <><Panel className="truth-breakdown-panel"><div className="panel-top"><h3><Icon name="shield" size={17}/>틀린 부분과 근거상 올바른 내용</h3></div><TruthBreakdown claims={[selectedLiveClaim]} evidence={liveResult?.evidence ?? []} sources={liveResult?.sources ?? []}/></Panel>{selectedLiveClaim.warnings.length > 0 && <div className="detail-blocks"><div><h4><ScrambleText>주장별 주의사항</ScrambleText></h4><ul>{selectedLiveClaim.warnings.map((text, index) => <li key={index}>{text}</li>)}</ul></div></div>}</>}
+                {!snapshot.demo && selectedLiveClaim && !canShowCorrection && <div className="detail-blocks"><div><h4><ScrambleText>확인된 내용</ScrambleText></h4>{selectedLiveClaim.confirmed.length ? <ul>{selectedLiveClaim.confirmed.map((text, index) => <li key={index}>{text}</li>)}</ul> : <p>직접 확인된 내용이 없습니다.</p>}</div><div><h4><ScrambleText>남은 불확실성</ScrambleText></h4>{selectedLiveClaim.unresolved.length ? <ul>{selectedLiveClaim.unresolved.map((text, index) => <li key={index}>{text}</li>)}</ul> : <p>현재 기록된 불확실성이 없습니다.</p>}</div>{selectedLiveClaim.warnings.length > 0 && <div><h4><ScrambleText>주장별 주의사항</ScrambleText></h4><ul>{selectedLiveClaim.warnings.map((text, index) => <li key={index}>{text}</li>)}</ul></div>}</div>}
               </> : <div className="empty-evidence"><Icon name="lens" size={27}/><h4><ScrambleText>주장을 선택해 주세요</ScrambleText></h4><p>위의 주장 카드를 선택하면 연결된 출처와 인용이 표시됩니다.</p></div>}</motion.div></AnimatePresence></Panel>
             </div></>
           </> : <Panel className="dashboard-empty"><div className="empty-orbit"><Icon name="lens" size={31}/></div><h3><ScrambleText>검증 결과가 이곳에 쌓입니다.</ScrambleText></h3><p>대화창에 원문을 보내면 주장별 신뢰지수와 근거 출처를 연결해 보여드립니다.</p><div className="empty-preview-stats"><span><strong>--</strong><small>신뢰지수</small></span><span><strong>--</strong><small>검토 출처</small></span><span><strong>--</strong><small>연결 근거</small></span></div><button className="secondary-button" onClick={loadSample}>예시 대시보드 보기 <Icon name="arrow"/></button></Panel>}

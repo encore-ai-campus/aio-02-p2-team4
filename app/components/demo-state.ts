@@ -2,7 +2,7 @@
 import { scoreBand, scoreLabel } from '../lib/fact-score.ts';
 import type { FactScoreBand } from '../lib/fact-score';
 
-export type Claim = Readonly<{ id: string; quote: string; start: number; end: number; factScore: number; scoreBand: FactScoreBand; scoreLabel: string; verdict: string | null; tone: string; summary: string; evidenceIds: readonly string[] }>;
+export type Claim = Readonly<{ id: string; quote: string; statement?: string; start: number; end: number; factScore: number; scoreBand: FactScoreBand; scoreLabel: string; verdict: string | null; tone: string; summary: string; evidenceIds: readonly string[] }>;
 export type Preview = Readonly<{ text: string; focus: string; demo: boolean; claims: readonly Claim[] }>;
 export type State = { snapshot: Preview | null; selectedId: string | null; status: 'idle' | 'loading' | 'ready' | 'cancelled'; token: number };
 export type Action = {type: 'load'; snapshot: Preview} | {type: 'select'; id: string} | {type: 'start'} | {type: 'complete'; token: number; snapshot: Preview} | {type: 'cancel'} | {type: 'reset'};
