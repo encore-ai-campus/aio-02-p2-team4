@@ -1,3 +1,5 @@
+import asyncio
+
 import httpx
 
 from kosis import fetch_nationwide_monthly_cpi, is_cpi_claim
@@ -9,7 +11,7 @@ def test_cpi_claim_detection_is_limited_to_cpi_mentions():
     assert not is_cpi_claim([{"quote": "실업률이 올랐다"}])
 
 
-async def test_fetch_nationwide_total_index_filters_out_regional_rows():
+def test_fetch_nationwide_total_index_filters_out_regional_rows():
     requests = []
 
     def handler(request):
@@ -26,14 +28,17 @@ async def test_fetch_nationwide_total_index_filters_out_regional_rows():
             ]
         return httpx.Response(200, json=payload)
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        result = await fetch_nationwide_monthly_cpi(api_key="server-secret", client=client)
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            result = await fetch_nationwide_monthly_cpi(api_key="server-secret", client=client)
 
-    assert result is not None
-    source, text = result
-    assert "시점 2026-09 소비자물가지수 119.88 (2020=100)" in text
-    assert "120.01" not in text
-    assert source["url"].endswith("tblId=DT_1J22003")
-    assert [request.url.path.rsplit("/", 1)[-1] for request in requests] == [
-        "statisticsSearch.do", "statisticsData.do", "statisticsParameterData.do",
-    ]
+        assert result is not None
+        source, text = result
+        assert "시점 2026-09 소비자물가지수 119.88 (2020=100)" in text
+        assert "120.01" not in text
+        assert source["url"].endswith("tblId=DT_1J22003")
+        assert [request.url.path.rsplit("/", 1)[-1] for request in requests] == [
+            "statisticsSearch.do", "statisticsData.do", "statisticsParameterData.do",
+        ]
+
+    asyncio.run(run())

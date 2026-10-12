@@ -20,7 +20,7 @@ def is_cpi_claim(claims: list[dict], focus: str = "") -> bool:
         focus,
         *(claim.get("statement") or claim.get("quote", "") for claim in claims),
     ]))
-    return "소비자물가" in target or re.search(r"\bcpi\b", target, re.IGNORECASE) is not None
+    return "소비자물가" in target or re.search(r"(?<![a-z])cpi(?![a-z])", target) is not None
 
 
 async def _get_json(client: httpx.AsyncClient, path: str, params: dict) -> list[dict] | None:

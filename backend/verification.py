@@ -263,7 +263,18 @@ def _validate_model_coverage(
     actual = [judgment.claimId for judgment in judgments]
     if len(actual) != len(expected) or len(set(actual)) != len(actual) or set(actual) != expected:
         raise ValueError("INVALID_MODEL_OUTPUT")
-    return {judgment.claimId: judgment for judgment in judgments}
+    by_claim = {judgment.claimId: judgment for judgment in judgments}
+    for claim in fact_claims:
+        judgment = by_claim[claim["id"]]
+        if not judgment.parts:
+            continue
+        cursor = 0
+        for part in judgment.parts:
+            position = claim["quote"].find(part.quote, cursor)
+            if position < 0:
+                raise ValueError("INVALID_MODEL_OUTPUT")
+            cursor = position + len(part.quote)
+    return by_claim
 
 
 def _validate_evidence(
