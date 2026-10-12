@@ -2,9 +2,11 @@
 
 ## Vercel·Render 배포 구성 (2026-10-12)
 
-- Vercel Hobby 프론트의 main `c336b1d` 배포 Ready를 확인했습니다. Render Blueprint에서 프론트를 제거하고 AIO 2기의 백엔드 `0.5c-512mb`·DB `0.1c-256mb`·디스크 1GB를 선언했습니다.
+- Vercel Hobby 프론트와 AIO 2기의 Render 백엔드 `0.5c-512mb`·DB `0.1c-256mb`·디스크 1GB를 배포했습니다. Render Blueprint에서 프론트를 제거했습니다.
 - 같은 Singapore 리전의 내부 DB 연결, 배포 전 대화 테이블 마이그레이션, Render 자동 생성 공유 시크릿·대화 서명 키를 적용했습니다. 강사 예제와 기존 개인 DB는 변경하지 않습니다.
-- 공식 Blueprint 스키마·백엔드 API/대화 회귀 30개가 통과했습니다. Render 리소스 적용·키 입력·Vercel 연결과 실제 검증/대화 저장은 진행 중이며 [배포 기록](../qa/실행기록/2026-10-12-Render배포.md)에 결과를 갱신합니다.
+- 공식 Blueprint 스키마·백엔드 API/대화 회귀 30개와 PR #6의 FE/BE CI가 통과했습니다. 사용자 승인으로 설정을 main `107a600`에 머지하고 AIO 2기에 실제 배포했습니다.
+- Render 백엔드 Live·DB Available·`Conversation tables: ready`·`/health` 200·공유 키 없는 API 403을 확인했습니다. Vercel 공유 키 불일치 403은 사용자의 Production 값 재입력·재배포로 해결했으며 main `107a600`의 공개 배포는 Ready입니다.
+- 공개 프록시 설정 200, 실제 DeepSeek·Tavily 검증 완료(주장 1개·출처 4개·인용 3개), 저장 동의·HTTPS 익명 세션·실제 DB 목록 조회를 확인했습니다. 대화 쓰기·복원 전체 수용 시험, Preview 키 연결, 512MB 부하·전체 지연은 남아 있습니다. [배포 기록](../qa/실행기록/2026-10-12-Render배포.md)을 참조합니다.
 
 ## main 통합 검증 (2026-10-12)
 
