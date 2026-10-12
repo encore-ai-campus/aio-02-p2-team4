@@ -1,5 +1,7 @@
 // @ts-ignore -- Node native TypeScript tests require explicit extensions.
 import { limitedText, validateRequest } from '../../../lib/server/agent.ts';
+// @ts-ignore -- Node native TypeScript tests require explicit extensions.
+import { requireSiteAccess } from '../../../lib/server/access.ts';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -19,6 +21,7 @@ function error(status: number, code: string, message: string) {
   return Response.json({code,message},{status,headers});
 }
 export async function POST(req: Request) {
+  const denied=requireSiteAccess(req);if(denied)return denied;
   const url=new URL(req.url);
   const forwardedFor = req.headers.get('x-forwarded-for');
   const unsafeForwarding = forwardedFor !== null && !['127.0.0.1','::1','::ffff:127.0.0.1'].includes(forwardedFor);
