@@ -148,15 +148,16 @@ function YoutubeVideoMetadata({source}: {source: FactSource}) {
 function TrustIndex({score, claimCount, sourceCount, evidenceCount, warningCount, claims, selectedClaimId, onSelectClaim}: {score: number | null; claimCount: number; sourceCount: number; evidenceCount: number; warningCount: number; claims: readonly Claim[]; selectedClaimId?: string; onSelectClaim: (id: string) => void}) {
   const band = score === null ? 'neutral' : scoreBand(score);
   const [claimMenuOpen, setClaimMenuOpen] = useState(false);
+  const [claimMenuPinned, setClaimMenuPinned] = useState(false);
   return <div className={`trust-index ${score === null ? 'is-empty' : ''}`} data-score-band={band}>
       <div className="trust-index-head">
         <div><span className="metric-label">종합 신뢰지수</span><h3 className="fact-score-title"><ScrambleText>팩트 점수</ScrambleText></h3></div>
         <FactScoreGuide score={score}/>
       </div>
-    {claims.length > 1 && <div className="claim-score-control" onMouseEnter={() => setClaimMenuOpen(true)} onMouseLeave={() => setClaimMenuOpen(false)} onFocus={() => setClaimMenuOpen(true)} onBlur={event => {if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setClaimMenuOpen(false);}}>
-      <button type="button" className="claim-score-trigger" aria-haspopup="true" aria-expanded={claimMenuOpen} onClick={() => setClaimMenuOpen(true)}><Icon name="grid" size={15}/>주장별 점수</button>
+    {claims.length > 1 && <div className="claim-score-control" onMouseEnter={() => {if (!claimMenuPinned) setClaimMenuOpen(true);}} onMouseLeave={() => {if (!claimMenuPinned) setClaimMenuOpen(false);}} onFocus={() => setClaimMenuOpen(true)} onBlur={event => {if (!event.currentTarget.contains(event.relatedTarget as Node | null) && !claimMenuPinned) setClaimMenuOpen(false);}}>
+      <button type="button" className="claim-score-trigger" aria-haspopup="true" aria-expanded={claimMenuOpen} onClick={() => {const nextPinned = !claimMenuPinned; setClaimMenuPinned(nextPinned); setClaimMenuOpen(nextPinned);}}><Icon name="grid" size={15}/>주장별 점수</button>
       {claimMenuOpen && <div className="claim-score-popover" id="claim-score-popover" role="region" aria-label="주장별 점수">
-        {claims.map((claim, index) => <button type="button" key={claim.id} className={`claim-score-option ${selectedClaimId === claim.id ? 'is-selected' : ''}`} aria-pressed={selectedClaimId === claim.id} onClick={() => {onSelectClaim(claim.id); setClaimMenuOpen(false);}}>
+        {claims.map((claim, index) => <button type="button" key={claim.id} className={`claim-score-option ${selectedClaimId === claim.id ? 'is-selected' : ''}`} aria-pressed={selectedClaimId === claim.id} onClick={() => {onSelectClaim(claim.id); if (!claimMenuPinned) setClaimMenuOpen(false);}}>
           <span className="claim-score-option-index">주장 {String(index + 1).padStart(2, '0')}</span><Badge claim={claim}/><span className="claim-score-option-quote">{claim.quote}</span><span className="claim-score-option-value">{claim.factScore}<small>점</small></span>
         </button>)}
       </div>}
