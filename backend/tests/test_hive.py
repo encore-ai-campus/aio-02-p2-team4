@@ -1,4 +1,4 @@
-"""Experiential routing boundaries; synthetic credentials and no network calls."""
+"""Hive routing boundaries; synthetic credentials and no network calls."""
 import asyncio
 import json
 
@@ -11,18 +11,18 @@ from runtime import Settings, load_settings
 
 
 def settings():
-    return Settings(api_key=SecretStr('openai-test-only'), gemini_api_key=SecretStr('gemini-test-only'), explabs_api_key=SecretStr('experiential-test-only'))
+    return Settings(api_key=SecretStr('openai-test-only'), gemini_api_key=SecretStr('gemini-test-only'), hive_api_key=SecretStr('hive-test-only'))
 
 
 def test_gateway_key_loads_from_file_then_environment_and_is_redacted(tmp_path, monkeypatch):
-    monkeypatch.delenv('EXPLABS_API_KEY', raising=False)
+    monkeypatch.delenv('HIVE_API_KEY', raising=False)
     path = tmp_path / '.env'
-    path.write_text('EXPLABS_API_KEY=gateway-file-test-only\n', encoding='utf-8')
+    path.write_text('HIVE_API_KEY=gateway-file-test-only\n', encoding='utf-8')
     value = load_settings(path)
-    assert value.explabs_api_key.get_secret_value() == 'gateway-file-test-only'
+    assert value.hive_api_key.get_secret_value() == 'gateway-file-test-only'
     assert 'gateway-file-test-only' not in repr(value)
-    monkeypatch.setenv('EXPLABS_API_KEY', 'gateway-process-test-only')
-    assert load_settings(path).explabs_api_key.get_secret_value() == 'gateway-process-test-only'
+    monkeypatch.setenv('HIVE_API_KEY', 'gateway-process-test-only')
+    assert load_settings(path).hive_api_key.get_secret_value() == 'gateway-process-test-only'
 
 
 def test_auto_tries_deepseek_first_then_preserves_all_existing_models():
@@ -38,7 +38,7 @@ def test_auto_tries_deepseek_first_then_preserves_all_existing_models():
     result, used = asyncio.run(run_with_fallback(providers, attempt))
     assert attempts == [('deepseek-v4.1-flash', 'max'), ('gpt-6-luna', 'max'), ('gemini-3.8-flash', 'high'), ('gemini-3.7-flash', 'high')]
     assert result == 'final' and used.model == 'gemini-3.7-flash'
-    assert providers[0].api_key == 'experiential-test-only'
+    assert providers[0].api_key == 'hive-test-only'
 
 
 def test_deepseek_selection_pins_it_and_missing_key_rejects_selection():
@@ -54,7 +54,7 @@ def test_deepseek_search_uses_existing_native_tools_not_generated_urls():
 
 
 def completion(content='{"reply":"연결 확인"}', **extra):
-    return {'id': 'chatcmpl-test', 'object': 'chat.completion', 'model': 'deepseek-v4.1-flash',
+    return {'id': 'chatcmpl-test', 'object': 'chat.completion', 'model': 'deepseek-ai/deepseek-v4.1-flash',
             'choices': [{'index': 0, 'finish_reason': 'stop', 'message': {'role': 'assistant', 'content': content}}],
             'usage': {'prompt_tokens': 10, 'completion_tokens': 20, 'total_tokens': 30}, **extra}
 
@@ -70,7 +70,7 @@ def call(response, *, image=None, max_output_tokens=400):
         async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
             kwargs = dict(instructions='Return a JSON reply.', input_data={'text': '합성 입력'},
                           schema={'type': 'object', 'properties': {'reply': {'type': 'string'}}, 'required': ['reply'], 'additionalProperties': False}, max_output_tokens=max_output_tokens)
-            provider = LLMProvider('experiential', 'deepseek-v4.1-flash', 'max', 'gateway-test-only')
+            provider = LLMProvider('hive', 'deepseek-v4.1-flash', 'max', 'gateway-test-only')
             if image is not None:
                 return await request_structured_image(provider, client, image=image, **kwargs)
             return await request_structured(provider, client, **kwargs)
@@ -83,15 +83,15 @@ def test_structured_call_uses_gateway_max_json_mode_and_only_gateway_credential(
     assert json.loads(raw) == {'reply': '연결 확인'}
     assert len(seen) == 1
     request = seen[0]
-    assert str(request.url) == 'https://api.experientiallabs.ai/v1/chat/completions'
+    assert str(request.url) == 'https://api-cdn.thehive.ai/api/v3/chat/completions'
     assert request.headers['Authorization'] == 'Bearer gateway-test-only'
     assert 'x-goog-api-key' not in request.headers
     body = json.loads(request.content)
-    assert body['model'] == 'deepseek-v4.1-flash'
+    assert body['model'] == 'deepseek-ai/deepseek-v4.1-flash'
     assert body['reasoning_effort'] == 'max'
     assert body['response_format'] == {'type': 'json_object'}
-    assert body['max_tokens'] == 16000
-    assert body['store'] is False
+    assert body['max_completion_tokens'] == 16000
+    assert 'store' not in body
     assert 'service_tier' not in body and 'input' not in body and 'tools' not in body
     assert '"required": ["reply"]' in body['messages'][0]['content']
     assert json.loads(body['messages'][1]['content']) == {'text': '합성 입력'}
@@ -103,7 +103,7 @@ def test_max_reasoning_budget_has_room_for_final_json_and_preserves_larger_reque
     raw, seen = call(completion(), image=image, max_output_tokens=requested)
     assert json.loads(raw)['reply'] == '연결 확인'
     body = json.loads(seen[0].content)
-    assert body['max_tokens'] == expected
+    assert body['max_completion_tokens'] == expected
     assert body['reasoning_effort'] == 'max'
 
 
@@ -124,7 +124,6 @@ def test_image_uses_chat_completions_multimodal_message_without_responses_input(
     {'choices': [{'finish_reason': 'tool_calls', 'message': {'content': None, 'tool_calls': []}}]},
     {'choices': [{'finish_reason': 'stop', 'message': {'content': '', 'reasoning_content': 'not an answer'}}]},
     {'choices': [{'finish_reason': 'stop', 'message': {'content': '{}', 'refusal': 'refused'}}]},
-    completion(**{'x-experiential-ignored-parameters': ['reasoning_effort']}),
 ])
 def test_incomplete_refused_or_ignored_max_responses_fail_closed(data):
     with pytest.raises(ProviderCallError):
@@ -137,7 +136,7 @@ def test_gateway_never_sends_native_openai_or_gemini_search_tools():
             pytest.fail('Unsupported web search must not send a paid gateway request')
         async with httpx.AsyncClient(transport=httpx.MockTransport(fail)) as client:
             with pytest.raises(ProviderCallError):
-                await request_search(LLMProvider('experiential', 'deepseek-v4.1-flash', 'max', 'test-only'), client, instructions='search', input_data={})
+                await request_search(LLMProvider('hive', 'deepseek-v4.1-flash', 'max', 'test-only'), client, instructions='search', input_data={})
     asyncio.run(run())
 
 
@@ -148,7 +147,7 @@ def test_intent_invalid_json_schema_falls_back_to_existing_provider():
     def handle(request):
         body = json.loads(request.content)
         attempted.append(body['model'])
-        if body['model'] == 'deepseek-v4.1-flash':
+        if body['model'] == 'deepseek-ai/deepseek-v4.1-flash':
             return httpx.Response(200, json=completion('{"action":"unsafe"}'))
         return httpx.Response(200, json={'status': 'completed', 'output': [{'type': 'message', 'content': [{'type': 'output_text', 'text': '{"action":"reply","reply":"안녕하세요","focus":""}'}]}]})
 
@@ -156,7 +155,7 @@ def test_intent_invalid_json_schema_falls_back_to_existing_provider():
         async with httpx.AsyncClient(transport=httpx.MockTransport(handle)) as client:
             return await run_with_fallback(configured_providers(settings()), lambda provider: classify_intent('하이', {}, client=client, provider=provider))
     value, used = asyncio.run(run())
-    assert attempted == ['deepseek-v4.1-flash', 'gpt-6-luna']
+    assert attempted == ['deepseek-ai/deepseek-v4.1-flash', 'gpt-6-luna']
     assert value['reply'] == '안녕하세요' and used.model == 'gpt-6-luna'
 
 
@@ -168,7 +167,7 @@ def test_deepseek_model_is_accepted_at_request_contract():
 def test_status_does_not_claim_native_search_for_deepseek_only(monkeypatch):
     import main
     from fastapi.testclient import TestClient
-    monkeypatch.setattr(main, 'load_settings', lambda: Settings(api_key=SecretStr(''), explabs_api_key=SecretStr('gateway-test-only')))
+    monkeypatch.setattr(main, 'load_settings', lambda: Settings(api_key=SecretStr(''), hive_api_key=SecretStr('gateway-test-only')))
     with TestClient(main.app) as client:
         value = client.get('/api/fact-check').json()
     assert value['model'] == 'deepseek-v4.1-flash' and value['reasoning'] == 'max'

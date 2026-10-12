@@ -18,11 +18,16 @@ def review_recovery(state: dict) -> dict:
                   and c.get("verdictCode") == "insufficient_evidence"]
     if not unresolved:
         return {"recoveryRequested": False}
-    failed_sources = [s for s in state.get("sources", []) if s.get("accessStatus") == "unavailable"]
+    sources = [s for s in state.get("sources", []) if isinstance(s, dict)]
+    failed_sources = [s for s in sources if s.get("accessStatus") == "unavailable"]
     diagnostics = [d for d in state.get("diagnostics", [])
                    if d.get("code") == "CITATION_REJECTED"]
     invalid_claims = {d["claimId"] for d in diagnostics}
-    targets = [c for c in unresolved if failed_sources or c["id"] in invalid_claims]
+    targets = [c for c in unresolved if c["id"] in invalid_claims]
+    if not targets and len(sources) > 1 and len(failed_sources) * 2 > len(sources):
+        # Strict majority unreadable: collection itself likely failed, retry once.
+        # A single failed source (even 1 of 1) is only a warning, not a retry.
+        targets = unresolved
     if not targets:
         return {"recoveryRequested": False}
 

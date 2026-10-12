@@ -27,7 +27,7 @@ npm run dev
 
 ## 자동 검증 (CI)
 
-현재 Auto 모델 순서는 DeepSeek V4.1 Flash MAX → GPT-6 Luna MAX/Fast → Gemini 3.8/3.7 Flash HIGH입니다. DeepSeek는 서버 전용 `EXPLABS_API_KEY`와 Experiential 게이트웨이를 사용하며 기존 모델·검색 도구를 보존합니다. 설정과 단독 모델 선택의 검색 예외는 [백엔드 안내](backend/README.md#환경-변수), 실호출과 검증 범위는 [DeepSeek QA 기록](docs/qa/실행기록/2026-10-05-DeepSeek.md)을 참고하세요.
+현재 Auto 모델 순서는 DeepSeek V4.1 Flash MAX → GPT-6 Luna MAX/Fast → Gemini 3.8/3.7 Flash HIGH입니다. DeepSeek는 서버 전용 `HIVE_API_KEY`와 하이브(Hive) API를 사용하며 기존 모델·검색 도구를 보존합니다. 설정과 단독 모델 선택의 검색 예외는 [백엔드 안내](backend/README.md#환경-변수), 실호출과 검증 범위는 [Hive 연결 QA 기록](docs/qa/실행기록/2026-10-10-Hive-DeepSeek.md)을 참고하세요.
 
 [GitHub Actions CI](.github/workflows/ci.yml)는 main 푸시·PR·수동 실행 시 프론트엔드 테스트·타입 검사·프로덕션 빌드와 백엔드 잠금 파일 검사·pytest를 병렬 실행합니다. Node.js 24와 Python 3.12를 사용하며 `npm ci`와 `uv sync --frozen`으로 잠금 파일 기준 의존성을 설치합니다.
 
@@ -60,6 +60,6 @@ npm run start
 
 DB 연결·서명 키는 백엔드에만 설정합니다. 설정·마이그레이션은 [백엔드 안내](backend/README.md#대화-저장--render-postgresql), 확인한 범위와 남은 검증은 [실행 기록](docs/qa/실행기록/2026-10-04-대화저장.md)을 참고하세요. 쿠키를 지우거나 만료되면 기존 대화에 접근할 수 없습니다. 무료 시연 DB는 2026년 11월 3일 만료 예정이며 영구 보관·백업을 보장하지 않습니다.
 
-## Render 웹서비스 배포 계획 (실환경 검증 대기)
+## Vercel 프론트 · Render 백엔드/DB 배포
 
-배포 플랫폼은 Render로 결정했으며 실제 배포·원격 검증은 아직 수행하지 않았습니다. Docker 구성·환경변수·공유 시크릿·적용 순서와 완료 기준은 [배포 안내](docs/배포.md)를 따릅니다. 공개 대상·호출 한도·사용자 동의의 미결정 사항은 작업현황에서 관리합니다.
+프론트는 [Vercel](https://true-or-not-ten.vercel.app)에 배포했습니다. `render.yaml`은 AIO 2기 워크스페이스의 백엔드 `0.5c-512mb`와 PostgreSQL `0.1c-256mb`·디스크 1GB를 구성하며 내부 DB 연결·배포 전 테이블 생성·서명 키 생성을 포함합니다. Render 적용과 원격 통합 검증 상태는 [배포 안내](docs/배포.md)·[실행 기록](docs/qa/실행기록/2026-10-12-Render배포.md)을 따릅니다.

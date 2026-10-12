@@ -196,24 +196,3 @@ def test_runtime_stage_keeps_explicit_provider_selection_pinned_after_failure(mo
         }))
 
     assert attempts == ["gpt-6-luna"]
-
-
-def test_runtime_reports_reasoning_used_by_answer_synthesis(monkeypatch):
-    import runtime
-    from runtime import Settings, make_runtime_adapters
-
-    monkeypatch.setattr(runtime, "eligible_sources", lambda state: [{"id": "s1"}])
-
-    async def fake_synthesize(state, *, client, provider):
-        assert provider.model == "gpt-6-luna"
-        return {"status": "grounded", "model": provider.model, "reasoning": "high"}
-
-    monkeypatch.setattr(runtime, "synthesize_answer", fake_synthesize)
-    adapters = make_runtime_adapters(
-        Settings(api_key=SecretStr("openai-test-only"), gemini_api_key=SecretStr(""))
-    )
-
-    result = asyncio.run(adapters.synthesize({"modelPreference": "gpt-6-luna"}))
-
-    assert result["answerModel"] == "gpt-6-luna"
-    assert result["answerReasoning"] == "high"

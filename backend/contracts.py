@@ -180,7 +180,7 @@ class AnswerSection(_ContractModel):
 
 
 class FactCheckAnswer(_ContractModel):
-    status: Literal["grounded", "insufficient_evidence"]
+    status: Literal["grounded", "partial", "insufficient_evidence", "synthesis_failed", "judgment_only"]
     overview: AnswerBlock | None
     sections: list[AnswerSection] = Field(max_length=4)
     conclusion: AnswerBlock | None
@@ -192,14 +192,17 @@ class FactCheckAnswer(_ContractModel):
         blocks = [block for block in (self.overview, self.conclusion) if block]
         blocks.extend(item for section in self.sections for item in section.items)
 
-        if self.status == "grounded" and (
+        if self.status == "judgment_only" and (blocks or self.model is not None or self.reasoning is not None):
+            raise ValueError("Judgment-only results cannot include generated blocks or model metadata")
+
+        if self.status in {"grounded", "partial"} and (
             self.overview is None
             or self.conclusion is None
             or any(not block.citations for block in blocks)
         ):
             raise ValueError("Grounded answers need cited overview and conclusion")
-        if self.status == "insufficient_evidence" and self.sections:
-            raise ValueError("Insufficient answers cannot assert evidence sections")
+        if self.status in {"insufficient_evidence", "synthesis_failed"} and self.sections:
+            raise ValueError("Unusable answers cannot assert evidence sections")
         return self
 
 

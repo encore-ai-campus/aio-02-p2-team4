@@ -3,6 +3,28 @@ import assert from 'node:assert/strict';
 import {composeAssistantReply, createAnswerCitationDisplayState, modelLabel, presentAnswerCitations, resolveAnswerCitationSource, searchBackendLabel} from './fact-check-reply.ts';
 
 const source = {id:'s1',url:'https://example.com/article',title:'AGI 전망',publisher:'예시 연구소',accessStatus:'verified',sourceType:'웹'};
+
+test('judgment-only replies preserve each claim, uncertainty and evidence for chat and restoration', () => {
+  const claims = [{id:'c1',kind:'fact',verdict:'일부 확인',factScore:65,summary:'조건부로 확인됩니다.',confirmed:['일부 확인'],unresolved:['지역 차이가 남습니다.'],evidenceIds:['e1']},
+    {id:'c2',kind:'prediction',verdict:'검증 대상 아님',factScore:50,summary:'미래 예측은 확정할 수 없습니다.',confirmed:[],unresolved:['시점 불확실'],evidenceIds:[]}];
+  const evidence = [{id:'e1',claimId:'c1',sourceId:'s1',quote:'조건이 명시된 원문입니다.',quoteVerified:true}];
+  const reply = composeAssistantReply({answer:{status:'judgment_only',overview:null,sections:[],conclusion:null,model:null,reasoning:null},model:'gpt-6-luna',claims,sources:[source],evidence});
+  assert.deepEqual(reply.judgments,claims);
+  assert.deepEqual(reply.evidence,evidence);
+  assert.match(reply.text,/조건부로 확인됩니다/);
+  assert.match(reply.text,/미래 예측은 확정할 수 없습니다/);
+  assert.equal(reply.answer.overview,null);
+});
+
+test('verified transcript evidence links to the original video without relaxing historical answer citations', () => {
+  const video={...source,sourceType:'유튜브',url:'https://www.youtube.com/watch?v=abcdefghijk'};
+  const citation={sourceId:'s1',quote:'검증된 자막의 원문 인용입니다.'};
+  assert.equal(resolveAnswerCitationSource(citation,[video]),null);
+  const displayed=presentAnswerCitations([citation],[video],createAnswerCitationDisplayState([video]),true);
+  assert.equal(displayed[0].href,video.url);
+  assert.equal(displayed[0].linkTarget,'external');
+  assert.equal(presentAnswerCitations([citation],[{...video,accessStatus:'unavailable'}],createAnswerCitationDisplayState([video]),true)[0].href,null);
+});
 const answer = {
   status:'grounded',
   overview:{text:'AGI 전망은 아직 불확실합니다.',citations:[{sourceId:'s1',quote:'시점은 여러 요인에 따라 달라집니다.'}]},

@@ -1,3 +1,8 @@
+// @ts-ignore -- Node native TypeScript tests require explicit extensions.
+import { limitedText } from '../../lib/server/agent.ts';
+// @ts-ignore -- Node native TypeScript tests require explicit extensions.
+import { readGateDecision } from '../../lib/chat-intent-contract.ts';
+
 function backend(path: string) {
   const base = new URL(process.env.FACTLENS_BACKEND_URL || 'http://127.0.0.1:8010');
   if (process.env.FACTLENS_ALLOW_REMOTE_BACKEND === '1') {
@@ -30,9 +35,9 @@ export async function POST(req: Request) {
   if(req.headers.get('content-type')?.split(';')[0].trim()!=='application/json')return error(400,'INVALID_REQUEST','JSON 입력이 필요합니다.');
   let body: unknown;
   try {
-    if(Number(req.headers.get('content-length'))>20000)throw new Error('BODY_TOO_LARGE');
-    const text = await req.text();
-    if (text.length > 20000) throw new Error('BODY_TOO_LARGE');
+    if(Number(req.headers.get('content-length'))>3000000)throw new Error('BODY_TOO_LARGE');
+    const readSignal = AbortSignal.any([req.signal, AbortSignal.timeout(5000)]);
+    const text = await limitedText(new Response(req.body), 3000000, readSignal);
     body=JSON.parse(text);
   }catch{return error(400,'INVALID_REQUEST','의도 파악 입력을 확인해 주세요.');}
   if (!body || typeof body !== 'object' || Array.isArray(body) || !('consent' in body) || body.consent !== true) {
@@ -40,11 +45,14 @@ export async function POST(req: Request) {
   }
   if(req.signal.aborted)return error(400,'CANCELLED','요청이 취소되었습니다.');
   try {
-    const signal=AbortSignal.any([req.signal,AbortSignal.timeout(25000)]);
+    const signal=AbortSignal.any([req.signal,AbortSignal.timeout(45000)]);
     const upstream=await fetch(backend('/api/intent'),{method:'POST',headers:backendHeaders({'Content-Type':'application/json'}),body:JSON.stringify(body),signal,redirect:'error',cache:'no-store'});
-    if(!upstream.ok){await upstream.body?.cancel();return error(503,'INTENT_FAILED','의도 파악에 실패했습니다.');}
-    const value=await upstream.json();
-    if(!value || (value.action!=='verify'&&value.action!=='reply'))throw new Error('PROTOCOL');
-    return Response.json({action:value.action,reply:value.reply??null,focus:value.focus??null},{headers:{'Cache-Control':'no-store'}});
+    if(!upstream.ok){
+      const failure=JSON.parse(await limitedText(upstream,16000,signal));
+      if(failure?.code==='PROVIDER_AUTH_FAILED')return error(503,'PROVIDER_AUTH_FAILED','선택한 모델의 인증에 실패했습니다. 서버 API 키와 접근 권한을 확인해 주세요.');
+      return error(503,'INTENT_FAILED','의도 파악에 실패했습니다.');
+    }
+    const value = readGateDecision(JSON.parse(await limitedText(upstream, 16000, signal)));
+    return Response.json(value,{headers:{'Cache-Control':'no-store'}});
   }catch{return error(503,'INTENT_FAILED','의도 파악에 실패했습니다.');}
 }

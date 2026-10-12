@@ -7,6 +7,11 @@
       "type": "local",
       "command": ["C:/Users/rlagn/.paper/bin/paper", "mcp"],
       "enabled": true
+    },
+    "notion": {
+      "type": "remote",
+      "url": "https://mcp.notion.com/mcp",
+      "enabled": true
     }
   }
 }

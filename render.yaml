@@ -1,15 +1,33 @@
-# Render blueprint (https://render.com/docs/blueprint-spec). NOT active until
-# applied from the dashboard. Secrets below must be filled per environment;
-# the frontend/backend shared secret has to match on both services.
+# AIO 2기 워크스페이스용 백엔드·DB 구성입니다. 프론트는 Vercel에서 배포합니다.
+# BACKEND_SHARED_SECRET을 Vercel의 FACTLENS_BACKEND_SECRET에도 설정해야 합니다.
+databases:
+  - name: true-or-not-db
+    databaseName: true_or_not
+    user: true_or_not
+    plan: 0.1c-256mb
+    diskSizeGB: 1
+    region: singapore
+    postgresMajorVersion: "18"
+    ipAllowList: []
+
 services:
   - type: web
     name: true-or-not-backend
     runtime: docker
+    plan: 0.5c-512mb
+    region: singapore
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     healthCheckPath: /health
+    preDeployCommand: .venv/bin/python migrate_conversations.py
     envVars:
-      - key: EXPLABS_API_KEY
+      - key: DATABASE_URL
+        fromDatabase:
+          name: true-or-not-db
+          property: connectionString
+      - key: CONVERSATION_SESSION_SECRET
+        generateValue: true
+      - key: HIVE_API_KEY
         sync: false
       - key: OPENAI_API_KEY
         sync: false
@@ -24,19 +42,4 @@ services:
       - key: FINNHUB_API_KEY
         sync: false
       - key: BACKEND_SHARED_SECRET
-        sync: false
-
-  - type: web
-    name: true-or-not-frontend
-    runtime: docker
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
-    envVars:
-      - key: FACTLENS_BACKEND_URL
-        value: https://true-or-not-backend.onrender.com
-      - key: FACTLENS_PUBLIC_DEPLOY
-        value: "1"
-      - key: FACTLENS_ALLOW_REMOTE_BACKEND
-        value: "1"
-      - key: FACTLENS_BACKEND_SECRET
-        sync: false
+        generateValue: true

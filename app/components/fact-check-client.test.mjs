@@ -1,11 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+
+test('accepts judgment-only final results but rejects generated blocks or model metadata', async () => {
+  const answer = {status:'judgment_only',overview:null,sections:[],conclusion:null,model:null,reasoning:null};
+  const accepted = await readFactCheckStream(response(JSON.stringify({type:'result',result:{...result,answer}})));
+  assert.equal(accepted.answer.status,'judgment_only');
+  for (const change of [{model:'gpt-6-luna'},{reasoning:'max'},{overview:{text:'생성한 설명',citations:[]}}]) {
+    await assert.rejects(readFactCheckStream(response(JSON.stringify({type:'result',result:{...result,answer:{...answer,...change}}}))),/결과/);
+  }
+});
 import {faviconUrlFor, readFactCheckStream, safeSourceUrl, validResult} from './fact-check-client.ts';
 
 const insufficientAnswer = {status:'insufficient_evidence',overview:null,sections:[],conclusion:null,model:null,reasoning:null};
 const result = {text:'한글 원문',focus:'',demo:false,model:'gpt-6-luna',reasoning:'max',checkedAt:'2026-09-19',claims:[],sources:[],evidence:[],warnings:[],answer:insufficientAnswer};
 const verifiedSource = {id:'s1',url:'https://example.com/article',title:'원문 제목',publisher:'example.com',publishedAt:null,retrievedAt:'2026-09-23',accessStatus:'verified',sourceType:'웹',originGroupId:null,youtubeTitle:null,youtubeChannelTitle:null,youtubePublishedAt:null,youtubeViewCount:null,youtubeComments:[],youtubeDataStatus:'not_applicable'};
 const groundedResult = (source=verifiedSource) => ({...result,sources:[source],answer:{status:'grounded',overview:{text:'확인된 개요',citations:[{sourceId:'s1',quote:'원문에 실제로 있는 인용'}]},sections:[],conclusion:{text:'확인된 결론',citations:[{sourceId:'s1',quote:'원문에 실제로 있는 인용'}]},model:'gemini-3.8-flash',reasoning:'high'}});
+test('accepts recovered partial answers only with complete cited blocks', async () => {
+ const recovered=groundedResult(); recovered.answer.status='partial';
+ const actual=await readFactCheckStream(response(JSON.stringify({type:'result',result:recovered})));
+ assert.equal(actual.answer.status,'partial');
+ recovered.answer.overview.citations=[];
+ assert.equal(validResult(recovered),false);
+ recovered.answer.overview=null;
+ assert.equal(validResult(recovered),false);
+});
 function response(text, width=1) {
   const bytes = new TextEncoder().encode(text);
   return new Response(new ReadableStream({start(c) {for(let i=0;i<bytes.length;i+=width)c.enqueue(bytes.slice(i,i+width));c.close();}}), {headers:{'content-type':'application/x-ndjson'}});
@@ -40,6 +58,9 @@ test('requires a well-formed answer and source-grounded citations', async () => 
  await assert.rejects(readFactCheckStream(response(JSON.stringify({type:'result',result:youtube}))),/결과/);
  const accepted=await readFactCheckStream(response(JSON.stringify({type:'result',result:groundedResult()})));
  assert.equal(accepted.answer.status,'grounded');
+ const failed=await readFactCheckStream(response(JSON.stringify({type:'result',result:{...result,answer:{...insufficientAnswer,status:'synthesis_failed'}}})));
+ assert.equal(failed.answer.status,'synthesis_failed');
+ await assert.rejects(readFactCheckStream(response(JSON.stringify({type:'result',result:{...result,answer:{...insufficientAnswer,status:'synthesis_failed',sections:[{kind:'supporting',title:'제목',items:[{text:'본문',citations:[]}]}]}}}))),/결과/);
 });
 test('accepts bounded matched section text and rejects malformed expanded content', async () => {
  const evidence={id:'e1',claimId:'c1',sourceId:'s1',quote:'확인된 근거 문장입니다.',quoteVerified:true,relation:'supports',sectionTitle:'4. 텔러린 앱',sectionText:'텔러린 앱은 여러 기능을 제공합니다.',sectionTruncated:false};

@@ -30,9 +30,10 @@ function validSourceMetadata(source: FactSource): boolean {
 function validAnswer(value: unknown, sources: FactSource[]): value is FactCheckAnswer {
   if (!value || typeof value !== 'object') return false;
   const answer = value as FactCheckAnswer;
-  if (!['grounded','insufficient_evidence'].includes(answer.status) || !Array.isArray(answer.sections) || answer.sections.length > 4
+  if (!['grounded','partial','insufficient_evidence','synthesis_failed','judgment_only'].includes(answer.status) || !Array.isArray(answer.sections) || answer.sections.length > 4
       || !(answer.model === null || (typeof answer.model === 'string' && answer.model.length <= 100))
       || !(answer.reasoning === null || answer.reasoning === 'max' || answer.reasoning === 'high')) return false;
+  if (answer.status === 'judgment_only') return answer.overview === null && answer.conclusion === null && answer.sections.length === 0 && answer.model === null && answer.reasoning === null;
   const validBlock = (value: unknown, citationsRequired: boolean): value is AnswerBlock => {
     if (!value || typeof value !== 'object') return false;
     const block = value as AnswerBlock;
@@ -42,11 +43,11 @@ function validAnswer(value: unknown, sources: FactSource[]): value is FactCheckA
         && typeof citation.quote === 'string' && citation.quote.length >= 1 && citation.quote.length <= 2000
         && sources.some(source => source.id === citation.sourceId && source.accessStatus === 'verified' && source.sourceType !== '유튜브'));
   };
-  const citationsRequired = answer.status === 'grounded';
+  const citationsRequired = answer.status === 'grounded' || answer.status === 'partial';
   if (answer.overview !== null && !validBlock(answer.overview, citationsRequired)) return false;
   if (answer.conclusion !== null && !validBlock(answer.conclusion, citationsRequired)) return false;
   if (citationsRequired && (answer.overview === null || answer.conclusion === null)) return false;
-  if (answer.status === 'insufficient_evidence' && answer.sections.length > 0) return false;
+  if (!citationsRequired && answer.sections.length > 0) return false;
   return answer.sections.every(section => section && typeof section === 'object'
     && ['supporting','counter','uncertainty','context'].includes(section.kind)
     && typeof section.title === 'string' && section.title.length >= 1 && section.title.length <= 120
