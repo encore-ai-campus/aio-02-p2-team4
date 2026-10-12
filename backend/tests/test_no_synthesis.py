@@ -42,3 +42,14 @@ def test_judgment_only_contract_has_no_generated_blocks_or_model():
                    {'sections': [{'kind': 'context', 'title': '설명', 'items': [{'text': '본문', 'citations': []}]}]}):
         with pytest.raises(ValidationError):
             FactCheckAnswer.model_validate({**empty, **change})
+
+
+def test_legacy_partial_answers_still_require_cited_overview_and_conclusion():
+    block = {'text': '과거 복구 답변입니다.', 'citations': [{'sourceId': 's1', 'quote': '확인된 원문입니다.'}]}
+    answer = {'status': 'partial', 'overview': block, 'sections': [],
+              'conclusion': block, 'model': None, 'reasoning': None}
+    assert FactCheckAnswer.model_validate(answer).status == 'partial'
+    for change in ({'overview': None}, {'conclusion': None},
+                   {'overview': {**block, 'citations': []}}):
+        with pytest.raises(ValidationError):
+            FactCheckAnswer.model_validate({**answer, **change})

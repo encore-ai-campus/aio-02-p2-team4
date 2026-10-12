@@ -180,7 +180,7 @@ class AnswerSection(_ContractModel):
 
 
 class FactCheckAnswer(_ContractModel):
-    status: Literal["grounded", "insufficient_evidence", "synthesis_failed", "judgment_only"]
+    status: Literal["grounded", "partial", "insufficient_evidence", "synthesis_failed", "judgment_only"]
     overview: AnswerBlock | None
     sections: list[AnswerSection] = Field(max_length=4)
     conclusion: AnswerBlock | None
@@ -195,7 +195,7 @@ class FactCheckAnswer(_ContractModel):
         if self.status == "judgment_only" and (blocks or self.model is not None or self.reasoning is not None):
             raise ValueError("Judgment-only results cannot include generated blocks or model metadata")
 
-        if self.status == "grounded" and (
+        if self.status in {"grounded", "partial"} and (
             self.overview is None
             or self.conclusion is None
             or any(not block.citations for block in blocks)

@@ -4,6 +4,7 @@ from copy import deepcopy
 import json
 
 import httpx
+import pytest
 from pydantic import SecretStr
 
 from contracts import FactCheckResponse
@@ -60,7 +61,8 @@ def provider_adapters(monkeypatch, handler):
     return make_runtime_adapters(Settings(api_key=SecretStr(""), hive_api_key=SecretStr("test-only")))
 
 
-def test_runtime_stream_finishes_with_two_llm_requests_and_preserves_verification(monkeypatch):
+@pytest.mark.parametrize("code,score", [("mostly_supported", 90), ("partially_supported", 65)])
+def test_runtime_stream_finishes_with_two_llm_requests_and_preserves_verification(monkeypatch, code, score):
     state = checked_state()
     requests = []
 
@@ -71,7 +73,7 @@ def test_runtime_stream_finishes_with_two_llm_requests_and_preserves_verificatio
             return completion({"claims": [{"quote": QUESTION, "kind": "fact", "searchQuery": "아폴로 11 달 착륙"}]})
         if len(requests) == 2:
             return completion({"claims": [{
-                "claimId": "c1", "verdictCode": "mostly_supported", "factScore": 90,
+                "claimId": "c1", "verdictCode": code, "factScore": score,
                 "summary": SUMMARY, "confirmed": [CONFIRMED], "unresolved": [UNRESOLVED],
                 "evidence": [{"sourceId": "s1", "quote": QUOTE, "quoteTranslation": state["evidence"][0]["quoteTranslation"],
                               "relation": "supports", "comparison": "same"}],
@@ -109,7 +111,8 @@ def test_runtime_stream_finishes_with_two_llm_requests_and_preserves_verificatio
     assert result.claims[0].summary == SUMMARY
     assert result.answer.model is None and result.answer.reasoning is None
     assert result.model == "deepseek-v4.1-flash" and result.reasoning == "max"
-    assert result.claims[0].verdictCode == "mostly_supported"
+    assert result.claims[0].verdictCode == code
+    assert result.claims[0].factScore == score
     assert result.evidence[0].quote == QUOTE and result.evidence[0].quoteVerified is True
     assert result.evidence[0].quoteTranslation == "아폴로 11호는 1969년 7월 인간을 달에 착륙시켰습니다."
     assert result.sources[0].url == "https://example.org/apollo"

@@ -15,6 +15,15 @@ const insufficientAnswer = {status:'insufficient_evidence',overview:null,section
 const result = {text:'한글 원문',focus:'',demo:false,model:'gpt-6-luna',reasoning:'max',checkedAt:'2026-09-19',claims:[],sources:[],evidence:[],warnings:[],answer:insufficientAnswer};
 const verifiedSource = {id:'s1',url:'https://example.com/article',title:'원문 제목',publisher:'example.com',publishedAt:null,retrievedAt:'2026-09-23',accessStatus:'verified',sourceType:'웹',originGroupId:null,youtubeTitle:null,youtubeChannelTitle:null,youtubePublishedAt:null,youtubeViewCount:null,youtubeComments:[],youtubeDataStatus:'not_applicable'};
 const groundedResult = (source=verifiedSource) => ({...result,sources:[source],answer:{status:'grounded',overview:{text:'확인된 개요',citations:[{sourceId:'s1',quote:'원문에 실제로 있는 인용'}]},sections:[],conclusion:{text:'확인된 결론',citations:[{sourceId:'s1',quote:'원문에 실제로 있는 인용'}]},model:'gemini-3.8-flash',reasoning:'high'}});
+test('accepts recovered partial answers only with complete cited blocks', async () => {
+ const recovered=groundedResult(); recovered.answer.status='partial';
+ const actual=await readFactCheckStream(response(JSON.stringify({type:'result',result:recovered})));
+ assert.equal(actual.answer.status,'partial');
+ recovered.answer.overview.citations=[];
+ assert.equal(validResult(recovered),false);
+ recovered.answer.overview=null;
+ assert.equal(validResult(recovered),false);
+});
 function response(text, width=1) {
   const bytes = new TextEncoder().encode(text);
   return new Response(new ReadableStream({start(c) {for(let i=0;i<bytes.length;i+=width)c.enqueue(bytes.slice(i,i+width));c.close();}}), {headers:{'content-type':'application/x-ndjson'}});

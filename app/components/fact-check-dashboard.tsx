@@ -248,8 +248,9 @@ function AnswerOverview({answer, sources}: {answer: FactCheckAnswer; sources: Fa
   const citationState = createAnswerCitationDisplayState(sources);
   return <section className="ai-answer" aria-label="AI 개요">
     <div className="ai-answer-heading"><span className="answer-spark" aria-hidden="true">✦</span><h3><BlurText text="AI 개요"/></h3></div>
-    {answer.status === 'grounded'
+    {answer.status === 'grounded' || answer.status === 'partial'
       ? <>
+          {answer.status === 'partial' && <p className="answer-insufficient" role="note">최종 생성이 중단되어 확인 가능한 내용만 표시합니다. 일부 내용이 생략되었을 수 있습니다.</p>}
           {answer.overview && <div className="answer-overview-block"><AnswerBlockView block={answer.overview} sources={sources} citationState={citationState}/></div>}
           {answer.sections.map((section, sectionIndex) => <section className={`answer-section answer-section--${section.kind}`} key={`${section.kind}-${sectionIndex}`} aria-label={section.title}>
             <h4>{section.title}</h4>
