@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 
 const FloatingLines = dynamic(() => import("./floating-lines"), {ssr: false});
 
-const floatingLinesGradient = ["#c5c5c5", "#6f6f6f", "#6a6a6a"];
+const floatingLinesGradient = ["#45aec8", "#4446b8", "#c7bebe"];
 const floatingLinesWaves = ["top", "middle", "bottom"] as const;
 const floatingLinesDistance = [8, 8, 8];
 
