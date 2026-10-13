@@ -106,7 +106,12 @@ async def search_tavily(
             if isinstance(result, dict)
         ]
 
-    candidate_groups = [await fetch_results(query) for query in queries]
+    candidate_groups = await asyncio.gather(
+        *(fetch_results(query) for query in queries), return_exceptions=True,
+    )
+    for group in candidate_groups:
+        if isinstance(group, BaseException):
+            raise group
     youtube_groups = []
     if include_youtube_search:
         async def fetch_youtube(query: str) -> list[dict]:
