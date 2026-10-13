@@ -13,7 +13,7 @@
 |---|---|
 | Python 구문 검사 | 통과 (`backend/verification.py`, `backend/tests/test_verification.py`) |
 | `git diff --check` | 통과 |
-| 판정 백엔드 회귀 | `tests/test_verification.py`: 25개 통과. 새 요청 지침 회귀 포함 |
+| 판정 백엔드 회귀 | `tests/test_verification.py` 25개와 `tests/test_partial_truth.py` 9개 통과. 새 요청 지침 및 서로 다른 주제의 정정 계약 포함 |
 | 실제 외부 모델·검색부터 최종 응답까지 | 미확인. 이전 실행은 원문 수집 뒤 최종 판정에서 결과를 반환하지 못함 |
-| GitHub CI | PR 생성 후 확인 예정 |
-| 상태 | 코드 변경 준비됨. PR 생성·main 병합 전 |
+| GitHub CI | PR #10의 백엔드·프론트 검사 진행 중 |
+| 상태 | PR #10 생성 완료. CI 확인 후 main 병합 |
