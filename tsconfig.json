@@ -36,12 +36,6 @@
     ".next/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules",
-    "app/root.tsx",
-    "app/routes.ts",
-    "app/routes/**/*",
-    "app/welcome/**/*",
-    "vite.config.ts",
-    "react-router.config.ts"
+    "node_modules"
   ]
 }
