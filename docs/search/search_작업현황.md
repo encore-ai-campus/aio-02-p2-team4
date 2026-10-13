@@ -15,5 +15,5 @@
 | `git diff --check` | 통과 |
 | 판정 백엔드 회귀 | `tests/test_verification.py` 25개와 `tests/test_partial_truth.py` 9개 통과. 새 요청 지침 및 서로 다른 주제의 정정 계약 포함 |
 | 실제 외부 모델·검색부터 최종 응답까지 | 미확인. 이전 실행은 원문 수집 뒤 최종 판정에서 결과를 반환하지 못함 |
-| GitHub CI | PR #10의 백엔드·프론트 검사 진행 중 |
-| 상태 | PR #10 생성 완료. CI 확인 후 main 병합 |
+| GitHub CI | PR #10: 백엔드·프론트 검사, Vercel 배포, Preview Comments 4개 모두 통과. 프리뷰 배포 Ready |
+| 상태 | PR #10이 2026-10-13 09:17 KST main에 병합됨. 병합한 head `9a41000` |
