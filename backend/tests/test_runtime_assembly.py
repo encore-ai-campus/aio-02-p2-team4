@@ -39,7 +39,11 @@ def test_forecast_keywords_reach_search_through_graph_without_leaking_into_resul
                     "claims": [{"quote": question, "kind": "prediction", "searchQuery": keywords}],
                 })}]},
             ]})
-        assert json.loads(body["input"])["primaryQueries"] == [keywords]
+        search_input = json.loads(body["input"])
+        if "youtubeQuery" in search_input:
+            assert search_input["youtubeQuery"] == keywords
+        else:
+            assert search_input["primaryQueries"] == [keywords]
         return httpx.Response(200, json={"status": "completed", "output": [
             {"type": "web_search_call", "status": "completed", "action": {"sources": []}},
         ]})
@@ -71,7 +75,7 @@ def test_forecast_keywords_reach_search_through_graph_without_leaking_into_resul
             return await graph.ainvoke({"text": question, "focus": "", "consent": True})
 
     state = asyncio.run(run())
-    assert len(requests) == 2
+    assert len(requests) == 3
     assert state["searchQueries"] == {"c1": keywords}
     result = FactCheckResponse.model_validate({"result": state["result"]}).result
     assert result.claims[0].kind == "prediction"

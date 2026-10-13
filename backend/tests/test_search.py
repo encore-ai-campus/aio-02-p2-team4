@@ -7,8 +7,8 @@ import pytest
 
 
 @pytest.mark.parametrize(("urls", "expected"), [
-    (["https://a.example/1", "https://b.example/2", "https://youtube.com/watch?v=3"],
-     ["https://a.example/1", "https://b.example/2", "https://youtube.com/watch?v=3"]),
+    (["https://a.example/1", "https://b.example/2", "https://youtube.com/watch?v=abcdefghijk"],
+     ["https://a.example/1", "https://b.example/2", "https://youtube.com/watch?v=abcdefghijk"]),
     (["https://dailymotion.com/1", "https://dailymotion.com/2", "https://dailymotion.com/3"],
      ["https://dailymotion.com/1", "https://dailymotion.com/2"]),
     (["https://a.example/story?id=1&utm_source=x", "https://a.example/story?id=1&utm_source=y", "https://a.example/story?id=2"],
@@ -246,14 +246,23 @@ def test_search_still_rejects_token_limited_response_without_completed_search():
 def test_search_selects_diverse_source_types_instead_of_one_publisher():
     from search import search_sources
 
+    youtube_queries = []
+
     def handler(request):
         body = json.loads(request.content)
-        plan = json.loads(body["input"])["searchPlan"]
+        search_input = json.loads(body["input"])
+        if "youtubeQuery" in search_input:
+            youtube_queries.append(search_input["youtubeQuery"])
+            return httpx.Response(200, json={"status": "completed", "output": [
+                {"type": "web_search_call", "status": "completed", "action": {"sources": [
+                    {"url": "https://www.youtube.com/watch?v=abcdefghijk", "title": "YouTube interview"},
+                ]}},
+            ]})
+        plan = search_input["searchPlan"]
         assert {item["sourceType"] for item in plan} >= {
             "한국 기사",
             "한국 블로그",
             "커뮤니티",
-            "유튜브",
         }
         return httpx.Response(200, json={"status": "completed", "output": [
             {"type": "web_search_call", "status": "completed", "action": {"sources": [
@@ -263,7 +272,6 @@ def test_search_selects_diverse_source_types_instead_of_one_publisher():
                 {"url": "https://www.hankyung.com/ai/article", "title": "한국 경제 기사"},
                 {"url": "https://blog.naver.com/example/post", "title": "한국 블로그 글"},
                 {"url": "https://www.reddit.com/r/artificial/comments/example", "title": "Reddit discussion"},
-                {"url": "https://www.youtube.com/watch?v=example", "title": "YouTube interview"},
                 {"url": "https://www.nytimes.com/2026/01/01/ai.html", "title": "International report"},
             ]}},
             {"type": "message", "content": []},
@@ -278,6 +286,7 @@ def test_search_selects_diverse_source_types_instead_of_one_publisher():
             )
 
     sources = asyncio.run(run())["sources"]
+    assert youtube_queries == ["아스트라가 AGI인가"]
     assert len(sources) == 6
     assert {source["sourceType"] for source in sources} >= {
         "공식·기술 문서",
