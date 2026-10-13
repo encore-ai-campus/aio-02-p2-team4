@@ -29,6 +29,9 @@ _DOORWAY_MARKERS = (
 )
 _MAX_DOORWAY_TEXT = 300
 _MAX_CONCURRENT_READS = 4
+_BROWSER_FALLBACK_TIMEOUT_SECONDS = 7
+_BROWSER_HYDRATION_WAIT_MS = 500
+_BROWSER_READ_SEMAPHORE = asyncio.Semaphore(1)
 
 
 def _is_japanese_page_text(text):
@@ -338,6 +341,12 @@ class SourceReadResult:
         yield self.url
 
 
+class _BrowserFallbackEligible(ValueError):
+    def __init__(self, url):
+        super().__init__('SOURCE_EMPTY')
+        self.url = url
+
+
 def checked_url(raw):
     url = candidate_url(raw)
     if url is None:
@@ -393,6 +402,8 @@ async def _read_url(session, raw, *, include_title=False):
                 text = _TextParser._normalize([decoded])
                 sections = []
             if not text:
+                if media == 'text/html':
+                    raise _BrowserFallbackEligible(current)
                 raise ValueError('SOURCE_EMPTY')
             if len(text) < _MAX_DOORWAY_TEXT and any(marker in text.lower() for marker in _DOORWAY_MARKERS):
                 raise ValueError('SOURCE_UNAVAILABLE')
@@ -414,6 +425,108 @@ async def fetch_public_text(raw):
             return await _read_url(session, raw, include_title=True)
 
 
+def _browser_origin(raw):
+    parts = urlsplit(raw)
+    if (
+        parts.scheme not in {'http', 'https'}
+        or not parts.hostname
+        or parts.username is not None
+        or parts.password is not None
+    ):
+        raise ValueError('UNSAFE_SOURCE')
+    port = parts.port or (443 if parts.scheme == 'https' else 80)
+    return parts.scheme, parts.hostname.lower(), port
+
+
+async def _fetch_browser_text(raw):
+    try:
+        from playwright.async_api import Error as PlaywrightError
+        from playwright.async_api import async_playwright
+    except ImportError as exc:
+        raise ValueError('SOURCE_UNAVAILABLE') from exc
+
+    url = checked_url(raw)
+    scheme, host, port = _browser_origin(url)
+    args = [
+        '--disable-background-networking',
+        '--disable-component-update',
+        '--disable-default-apps',
+        '--disable-sync',
+        '--no-first-run',
+    ]
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        addresses = await PublicResolver().resolve(host, port)
+        address = addresses[0]['host']
+        mapped_address = f'[{address}]' if ':' in address else address
+        args.append(f'--host-resolver-rules=MAP {host} {mapped_address}')
+
+    async def read_page():
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(
+                headless=True,
+                chromium_sandbox=True,
+                args=args,
+            )
+            try:
+                context = await browser.new_context(
+                    accept_downloads=False,
+                    service_workers='block',
+                )
+                try:
+                    async def guard_request(route):
+                        if route.request.resource_type in {'image', 'media', 'font'}:
+                            await route.abort()
+                            return
+                        try:
+                            request_origin = _browser_origin(route.request.url)
+                        except ValueError:
+                            await route.abort()
+                            return
+                        if request_origin != (scheme, host, port):
+                            await route.abort()
+                            return
+                        await route.continue_()
+
+                    await context.route('**/*', guard_request)
+                    page = await context.new_page()
+                    response = await page.goto(
+                        url,
+                        wait_until='domcontentloaded',
+                        timeout=5_000,
+                    )
+                    if response is None or response.status != 200:
+                        raise ValueError('SOURCE_UNAVAILABLE')
+                    await page.wait_for_timeout(_BROWSER_HYDRATION_WAIT_MS)
+                    text = await page.evaluate(
+                        """() => {
+                            const content = [...document.querySelectorAll('article, main, [role="main"]')]
+                                .find(node => node.innerText && node.innerText.trim());
+                            return (content || document.body)?.innerText?.slice(0, 18000) || '';
+                        }"""
+                    )
+                    text = _TextParser._normalize([text])
+                    if not text or (
+                        len(text) < _MAX_DOORWAY_TEXT
+                        and any(marker in text.lower() for marker in _DOORWAY_MARKERS)
+                    ):
+                        raise ValueError('SOURCE_UNAVAILABLE')
+                    title = (await page.title())[:300]
+                    return SourceReadResult(text[:18000], page.url, title)
+                finally:
+                    await context.close()
+            finally:
+                await browser.close()
+
+    try:
+        async with asyncio.timeout(_BROWSER_FALLBACK_TIMEOUT_SECONDS):
+            async with _BROWSER_READ_SEMAPHORE:
+                return await read_page()
+    except (PlaywrightError, OSError, TimeoutError, ValueError) as exc:
+        raise ValueError('SOURCE_UNAVAILABLE') from exc
+
+
 def _generic_title(title, raw_url):
     if not isinstance(title, str) or not title.strip():
         return True
@@ -422,7 +535,7 @@ def _generic_title(title, raw_url):
     return normalized in {host, f'www.{host}', 'source', 'untitled'}
 
 
-async def _read_candidate(source, *, reader, youtube_reader):
+async def _read_candidate(source, *, reader, youtube_reader, browser_fallback):
     """Read one candidate. Returns (item, text, sections); item None drops it."""
     item = {
         **source,
@@ -489,7 +602,10 @@ async def _read_candidate(source, *, reader, youtube_reader):
             return None, None, None
         return item, None, None
     try:
-        result = await reader(source['url'])
+        try:
+            result = await reader(source['url'])
+        except _BrowserFallbackEligible as eligible:
+            result = await browser_fallback(eligible.url)
         if isinstance(result, SourceReadResult):
             text, final_url, page_title = result.text, result.url, result.title
             sections = result.sections
@@ -512,10 +628,25 @@ async def _read_candidate(source, *, reader, youtube_reader):
 async def read_sources(state, *, reader=fetch_public_text, youtube_reader=None):
     candidates = state['sources'][:6]
     semaphore = asyncio.Semaphore(_MAX_CONCURRENT_READS)
+    browser_fallback_used = False
+    browser_fallback_lock = asyncio.Lock()
+
+    async def browser_fallback(url):
+        nonlocal browser_fallback_used
+        async with browser_fallback_lock:
+            if browser_fallback_used:
+                raise ValueError('SOURCE_UNAVAILABLE')
+            browser_fallback_used = True
+        return await _fetch_browser_text(url)
 
     async def bounded(source):
         async with semaphore:
-            return await _read_candidate(source, reader=reader, youtube_reader=youtube_reader)
+            return await _read_candidate(
+                source,
+                reader=reader,
+                youtube_reader=youtube_reader,
+                browser_fallback=browser_fallback,
+            )
 
     # Concurrent reads cut wall time from the sum to roughly the slowest
     # source; gather preserves candidate order for ranking.
