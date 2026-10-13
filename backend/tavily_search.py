@@ -1,13 +1,7 @@
 """Tavily web search discovery. Optional; LLM search remains the fallback."""
-import asyncio
-import logging
-
 import httpx
 
-from search import _project_candidates_with_youtube, build_search_query
-
-
-logger = logging.getLogger(__name__)
+from search import _project_candidates, build_search_query
 
 
 class TavilyUnavailable(Exception):
@@ -18,12 +12,10 @@ async def search_tavily(
     state: dict, *, api_key: str, client: httpx.AsyncClient,
     queries: list[str] | None = None,
 ) -> dict:
-    """Search each checkable claim with Tavily basic depth (1 credit per query).
+    """Search each checkable claim once with Tavily basic depth (1 credit each).
 
-    Normal verification also makes one restricted YouTube search per distinct claim query.
-    Pass explicit ``queries`` for supplemental searches that should skip YouTube lookup.
+    Pass explicit ``queries`` to search those instead of claim-derived ones.
     """
-    include_youtube_search = queries is None
     if state.get("consent") is not True:
         raise ValueError("INVALID_REQUEST")
     if not api_key.strip():
@@ -61,22 +53,19 @@ async def search_tavily(
         if not queries:
             return {"sources": []}
 
-    async def fetch_results(query: str, youtube_only: bool = False) -> list[dict]:
-        payload = {
-            "query": query,
-            "search_depth": "basic",
-            "max_results": 5,
-            "include_answer": False,
-            "include_raw_content": False,
-        }
-        if youtube_only:
-            payload["include_domains"] = ["youtube.com", "youtu.be"]
-            payload["include_domains_mode"] = "restrict"
+    candidate_groups = []
+    for query in queries:
         try:
             response = await client.post(
                 "https://api.tavily.com/search",
                 headers={"Authorization": f"Bearer {api_key}"},
-                json=payload,
+                json={
+                    "query": query,
+                    "search_depth": "basic",
+                    "max_results": 5,
+                    "include_answer": False,
+                    "include_raw_content": False,
+                },
                 timeout=20.0,
             )
         except (httpx.HTTPError, TimeoutError) as exc:
@@ -94,7 +83,7 @@ async def search_tavily(
         results = data.get("results")
         if not isinstance(results, list):
             raise TavilyUnavailable("missing_results")
-        return [
+        candidate_groups.append([
             {
                 "url": result.get("url"),
                 "title": result.get("title"),
@@ -104,28 +93,9 @@ async def search_tavily(
             }
             for result in results
             if isinstance(result, dict)
-        ]
-
-    async def fetch_youtube(query: str) -> list[dict]:
-        try:
-            return await fetch_results(query, youtube_only=True)
-        except TavilyUnavailable as exc:
-            logger.warning("Separate YouTube search failed (%s)", type(exc).__name__)
-            return []
-
-    tasks = [asyncio.create_task(fetch_results(query)) for query in queries]
-    if include_youtube_search:
-        tasks.extend(asyncio.create_task(fetch_youtube(query)) for query in queries)
-    try:
-        candidate_groups = await asyncio.gather(*tasks)
-    except BaseException:
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        raise
-
+        ])
     candidates = [candidate for group in candidate_groups for candidate in group if candidate]
-    selected = _project_candidates_with_youtube(
+    selected = _project_candidates(
         candidates, prefer_finance=bool(state.get("stockSymbols")),
         exclude_urls=state.get("excludedSourceUrls", []),
     )

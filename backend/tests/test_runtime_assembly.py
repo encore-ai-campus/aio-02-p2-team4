@@ -39,9 +39,7 @@ def test_forecast_keywords_reach_search_through_graph_without_leaking_into_resul
                     "claims": [{"quote": question, "kind": "prediction", "searchQuery": keywords}],
                 })}]},
             ]})
-        search_input = json.loads(body["input"])
-        assert search_input["primaryQueries"] == [keywords]
-        assert search_input["youtubeQueries"] == ["site:youtube.com " + keywords]
+        assert json.loads(body["input"])["primaryQueries"] == [keywords]
         return httpx.Response(200, json={"status": "completed", "output": [
             {"type": "web_search_call", "status": "completed", "action": {"sources": []}},
         ]})

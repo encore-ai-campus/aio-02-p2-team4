@@ -8,8 +8,6 @@ import type { Claim } from './demo-state';
 import { MODEL_OPTIONS } from '../lib/fact-check-contract';
 import type { AgentStage, AnswerBlock, AttachedImage, ContentSummary, FactCheckAnswer, FactClaim, FactEvidence, FactCheckRequest, FactCheckResult, FactSource, ModelOption, ModelPreference, ProgressClaim, ProgressSource } from '../lib/fact-check-contract';
 import { sourceDiscoveryLabel } from '../lib/source-discovery';
-import { elapsedSecondsSince, progressElapsedSeconds } from '../lib/progress-timing';
-import type { ProgressTiming } from '../lib/progress-timing';
 import { scoreBand, scoreLabel, verdictBreakdown } from '../lib/fact-score';
 import { stripYoutubeApiDataForExport } from '../lib/youtube-context';
 import { FactCheckError, faviconUrlFor, readFactCheckStream, safeSourceUrl, validResult } from './fact-check-client';
@@ -114,11 +112,11 @@ function TrustIndex({score, claimCount, sourceCount, evidenceCount, warningCount
   </div>;
 }
 
-type ChatProgress = ProgressTiming & {
+type ChatProgress = {
   status?: string; statusStage?: AgentStage;
   sourcesFound?: ProgressSource[]; sourcesFoundElapsedSeconds?: number;
   sourcesRead?: ProgressSource[]; sourcesReadElapsedSeconds?: number;
-  claims?: ProgressClaim[]; claimsElapsedSeconds?: number;
+  claims?: ProgressClaim[]; claimsElapsedSeconds?: number; completed?: boolean; error?: string;
 };
 type ChatMessage = {id: string; role: 'assistant' | 'user'; text?: string; answer?: FactCheckAnswer; judgments?: FactClaim[]; evidence?: FactEvidence[]; factScore?: number | null; verdict?: string | null; search?: string | null; scoreMode?: 'jev' | 'claims'; scoreEngine?: string | null; sources?: FactSource[]; progress?: ChatProgress; summary?: ContentSummary; meta?: string; tone?: 'normal' | 'error'; imagePreview?: string; thinking?: boolean; storageStatus?: 'cancelled'};
 type ModelSelection = ModelPreference;
@@ -315,7 +313,7 @@ function VerifyTimeline({progress}: {progress: ChatProgress}) {
   const currentIndex = progress.completed
     ? VERIFY_STAGES.length
     : Math.max(0, VERIFY_STAGES.findIndex(stage => stage.id === progress.statusStage));
-  const visibleStages = VERIFY_STAGES;
+  const visibleStages = VERIFY_STAGES.slice(0, Math.min(VERIFY_STAGES.length, Math.max(3, currentIndex + 1)));
   const [travel, setTravel] = useState<{from: number; to: number; key: number} | null>(null);
   const prevRef = useRef(currentIndex);
   useEffect(() => {
@@ -339,14 +337,16 @@ function VerifyTimeline({progress}: {progress: ChatProgress}) {
 }
 
 function ProgressReply({progress}: {progress: ChatProgress}) {
-  const [now, setNow] = useState(() => performance.now());
+  const [stageElapsedSeconds, setStageElapsedSeconds] = useState(0);
   useEffect(() => {
     if (progress.completed || progress.error) return;
-    setNow(performance.now());
-    const timer = window.setInterval(() => setNow(performance.now()), 1000);
+    const startedAt = performance.now();
+    setStageElapsedSeconds(0);
+    const timer = window.setInterval(() => {
+      setStageElapsedSeconds(Math.floor((performance.now() - startedAt) / 1000));
+    }, 1000);
     return () => window.clearInterval(timer);
-  }, [progress.requestStartedAt, progress.completed, progress.error]);
-  const elapsedSeconds = progressElapsedSeconds(progress, now);
+  }, [progress.statusStage, progress.completed, progress.error]);
   const claims = progress.claims;
   const sources = progress.sourcesRead ?? [];
   const sourceNumbers = new Map(sources.map((source, index) => [source.id, index + 1]));
@@ -356,10 +356,10 @@ function ProgressReply({progress}: {progress: ChatProgress}) {
     {!progress.completed && !progress.error && <ThinkingLoader label={progress.status ?? '최종 답변을 만드는 중입니다.'}/>}
     <VerifyTimeline progress={progress}/>
     {progress.status && <p className="progress-current-stage" data-testid="progress-stage">
-      <span>{progress.status}</span><time>총 {elapsedSeconds}초 경과</time>
+      <span>{progress.status}</span><time>{stageElapsedSeconds}초 경과</time>
     </p>}
-    {progress.sourcesFound !== undefined && progress.sourcesRead === undefined && <ProgressSourceList title="검색된 출처 후보" sources={progress.sourcesFound} elapsedSeconds={progress.sourcesFoundElapsedSeconds} durationLabel="검색" testId="progress-candidate-source"/>}
-    {progress.sourcesRead !== undefined && <ProgressSourceList title="가져온 원문" sources={progress.sourcesRead} elapsedSeconds={progress.sourcesReadElapsedSeconds} durationLabel="읽기" testId="progress-read-source"/>}
+    {progress.sourcesFound !== undefined && progress.sourcesRead === undefined && <ProgressSourceList title="검색된 출처 후보" sources={progress.sourcesFound} elapsedSeconds={progress.sourcesFoundElapsedSeconds} testId="progress-candidate-source"/>}
+    {progress.sourcesRead !== undefined && <ProgressSourceList title="가져온 원문" sources={progress.sourcesRead} elapsedSeconds={progress.sourcesReadElapsedSeconds} testId="progress-read-source"/>}
     {claims !== undefined && (claims.length
       ? <ol className="progress-claim-list">{claims.map(claim => <li className="progress-claim" key={claim.id}>
           <div className="progress-claim-heading"><strong>{claim.quote}</strong><span>{claim.verdict}</span></div>
@@ -383,9 +383,9 @@ function ProgressReply({progress}: {progress: ChatProgress}) {
         </section>;
         }
 
-        function ProgressSourceList({title, sources, elapsedSeconds, durationLabel, testId}: {title: string; sources: ProgressSource[]; elapsedSeconds?: number; durationLabel: string; testId: string}) {
+        function ProgressSourceList({title, sources, elapsedSeconds, testId}: {title: string; sources: ProgressSource[]; elapsedSeconds?: number; testId: string}) {
         return <div className="progress-source-block" data-testid={`${testId}-group`}>
-        <h4><ScrambleText>{title}</ScrambleText>{elapsedSeconds !== undefined && <span className="progress-milestone-time"> · {durationLabel} {elapsedSeconds}초</span>}</h4>
+        <h4><ScrambleText>{title}</ScrambleText>{elapsedSeconds !== undefined && <span className="progress-milestone-time"> · {elapsedSeconds}초</span>}</h4>
         {sources.length > 0
         ? <ul className="progress-source-list">{sources.map((source, index) => {
             const href = safeSourceUrl(source.url);
@@ -511,7 +511,6 @@ export default function FactCheckDashboard() {
   const warningCount = snapshot ? snapshot.demo ? snapshot.claims.filter(claim => claim.scoreBand !== 'verified').length : liveResult?.warnings.length ?? 0 : 0;
   const selectedEvidence = selected && liveResult ? liveResult.evidence.filter(evidence => evidence.claimId === selected.id && selected.evidenceIds.includes(evidence.id)) : [];
   const selectedSourceIds = new Set(snapshot?.demo ? sourceDocs.map(source => source.id) : selectedEvidence.map(evidence => evidence.sourceId));
-  const highlightSelectedSources = (snapshot?.claims.length ?? 0) > 1;
   const selectedLiveClaim = selected && liveResult ? liveResult.claims.find(claim => claim.id === selected.id) : null;
   const canShowCorrection = Boolean(selectedLiveClaim && selectedEvidence.length > 0 && (selectedLiveClaim.parts?.length || selectedLiveClaim.refuted?.length));
 
@@ -561,9 +560,7 @@ export default function FactCheckDashboard() {
     if (request.current) cancelNoticed.current = request.current;
     stop();
     dispatch({type: 'cancel'});
-    setMessages(messages => messages.filter(message => !message.thinking).map(message => message.progress && !message.progress.completed && !message.progress.error
-      ? {...message, progress: {...message.progress, statusElapsedSeconds: progressElapsedSeconds(message.progress, performance.now()), error: '검증을 중단했습니다.'}}
-      : message));
+    setMessages(messages => messages.filter(message => !message.thinking));
     setNotice('요청을 중단했습니다.');
     addMessage({role:'assistant',text:'요청을 중단했습니다.',storageStatus:'cancelled'});
   }
@@ -733,8 +730,7 @@ export default function FactCheckDashboard() {
     setImage(null);
     const current = generation.current;
     const startedAt = performance.now();
-    const elapsedSeconds = () => elapsedSecondsSince(startedAt, performance.now());
-    const stageStartedAt = new Map<AgentStage, number>();
+    const elapsedSeconds = () => Math.floor((performance.now() - startedAt) / 1000);
     let progressMessageId: string | null = null;
     const thinkingId = addMessage({role: 'assistant', thinking: true});
     progressMessageId = thinkingId;
@@ -743,7 +739,7 @@ export default function FactCheckDashboard() {
     const updateProgressMessage = (patch: Partial<ChatProgress>) => {
       if (generation.current !== current) return;
       setMessages(messages => messages.map(message => message.id === progressMessageId
-        ? {...message, thinking: false, progress: {...message.progress, ...patch, requestStartedAt: startedAt, statusElapsedSeconds: elapsedSeconds()}}
+        ? {...message, thinking: false, progress: {...message.progress, ...patch}}
         : message));
     };
     let gate: GateDecision | null = null;
@@ -835,14 +831,12 @@ export default function FactCheckDashboard() {
           signal: controller.signal,
           onStage: stage => {
             if (generation.current !== current) return;
-            stageStartedAt.set(stage.stage, performance.now());
             updateProgressMessage({status: stage.message, statusStage: stage.stage});
             setNotice(stage.message);
           },
           onSources: event => {
             if (generation.current !== current) return;
-            const sourceStage = event.phase === 'found' ? 'searching' : 'reading';
-            const elapsed = elapsedSecondsSince(stageStartedAt.get(sourceStage) ?? startedAt, performance.now());
+            const elapsed = elapsedSeconds();
             updateProgressMessage(event.phase === 'found'
               ? {sourcesFound: event.sources, sourcesFoundElapsedSeconds: elapsed}
               : {sourcesRead: event.sources, sourcesReadElapsedSeconds: elapsed});
@@ -923,7 +917,7 @@ export default function FactCheckDashboard() {
         setMessages(messages => {
           const target = messages.find(item => item.id === progressMessageId);
           if (target?.progress) {
-            return messages.map(item => item.id === progressMessageId ? {...item, progress: {...item.progress, statusElapsedSeconds: elapsedSeconds(), error: message}} : item);
+            return messages.map(item => item.id === progressMessageId ? {...item, progress: {...item.progress, error: message}} : item);
           }
           return [...messages.filter(item => item.id !== progressMessageId), {id: errorId, role: 'assistant', text: message, tone: 'error'}];
         });
@@ -1082,7 +1076,7 @@ export default function FactCheckDashboard() {
               <div className="dashboard-left-stack">
                 <Panel className="trust-panel"><TrustIndex score={trustScore} claimCount={snapshot.claims.length} sourceCount={sourceCount} evidenceCount={evidenceCount} warningCount={warningCount} claims={snapshot.claims} selectedClaimId={selected?.id} onSelectClaim={select}/></Panel>
                 <div className="mobile-tabs" role="group" aria-label="검토 화면 선택"><span className="mobile-tabs-indicator" data-active={mobileTab} aria-hidden="true"/><button aria-pressed={mobileTab === 'results'} onClick={() => setMobileTab('results')}>결과</button><button aria-pressed={mobileTab === 'sources'} onClick={() => setMobileTab('sources')}>출처</button></div>
-                <Panel className="source-index-panel"><div className="panel-top"><h3><Icon name="book" size={17}/><ScrambleText>검토한 출처</ScrambleText></h3><span>{sourceCount}개 수집</span></div><div className="source-index-grid">{snapshot.demo ? documents.map((source, index) => <button className={highlightSelectedSources && selectedSourceIds.has(source.id) ? 'source-index-card is-selected-claim-source' : 'source-index-card'} ref={spotlight} key={source.id} onClick={() => setDialog(source.id)}><span className="source-index-number">{String(index + 1).padStart(2, '0')}</span><span><strong>{source.title}</strong><small>{source.publisher}</small></span><Icon name="arrow" size={15}/></button>) : liveResult?.sources.map((source, index) => {const href = safeSourceUrl(source.url); const sourceLabel = source.sourceType === '유튜브' ? source.youtubeDataStatus === 'collected' ? `공개 댓글 ${source.youtubeComments.length}개` : source.youtubeDataStatus === 'not_configured' ? '댓글 API 미설정' : '댓글 조회 불가' : source.accessStatus === 'verified' ? '원문 확인' : '접근 불가'; const content = <><span className="source-index-number">{String(index + 1).padStart(2, '0')}</span><span><strong>{source.youtubeTitle || source.title}</strong><small>{source.sourceType} · {source.publisher} · {sourceDiscoveryLabel(source)} · {sourceLabel}</small></span><Icon name="arrow" size={15}/></>; return href ? <a className={highlightSelectedSources && selectedSourceIds.has(source.id) ? 'source-index-card is-selected-claim-source' : 'source-index-card'} ref={spotlight} href={href} target="_blank" rel="noopener noreferrer" key={source.id}>{content}</a> : <div className={highlightSelectedSources && selectedSourceIds.has(source.id) ? 'source-index-card is-selected-claim-source' : 'source-index-card'} ref={spotlight} key={source.id}>{content}</div>;})}{!sourceCount && <div className="source-index-empty">아직 수집된 출처가 없습니다.</div>}</div></Panel>
+                <Panel className="source-index-panel"><div className="panel-top"><h3><Icon name="book" size={17}/><ScrambleText>검토한 출처</ScrambleText></h3><span>{sourceCount}개 수집</span></div><div className="source-index-grid">{snapshot.demo ? documents.map((source, index) => <button className={selectedSourceIds.has(source.id) ? 'source-index-card is-selected-claim-source' : 'source-index-card'} ref={spotlight} key={source.id} onClick={() => setDialog(source.id)}><span className="source-index-number">{String(index + 1).padStart(2, '0')}</span><span><strong>{source.title}</strong><small>{source.publisher}</small></span><Icon name="arrow" size={15}/></button>) : liveResult?.sources.map((source, index) => {const href = safeSourceUrl(source.url); const sourceLabel = source.sourceType === '유튜브' ? source.youtubeDataStatus === 'collected' ? `공개 댓글 ${source.youtubeComments.length}개` : source.youtubeDataStatus === 'not_configured' ? '댓글 API 미설정' : '댓글 조회 불가' : source.accessStatus === 'verified' ? '원문 확인' : '접근 불가'; const content = <><span className="source-index-number">{String(index + 1).padStart(2, '0')}</span><span><strong>{source.youtubeTitle || source.title}</strong><small>{source.sourceType} · {source.publisher} · {sourceDiscoveryLabel(source)} · {sourceLabel}</small></span><Icon name="arrow" size={15}/></>; return href ? <a className={selectedSourceIds.has(source.id) ? 'source-index-card is-selected-claim-source' : 'source-index-card'} ref={spotlight} href={href} target="_blank" rel="noopener noreferrer" key={source.id}>{content}</a> : <div className={selectedSourceIds.has(source.id) ? 'source-index-card is-selected-claim-source' : 'source-index-card'} ref={spotlight} key={source.id}>{content}</div>;})}{!sourceCount && <div className="source-index-empty">아직 수집된 출처가 없습니다.</div>}</div></Panel>
               </div>
               <Panel className="evidence-panel"><div className="panel-top"><h3 className="scramble-panel-title"><Icon name="lens" size={18}/><ScrambleText>선택한 주장과 근거</ScrambleText></h3><span>{snapshot.demo ? '예시 비교' : '수집된 원문 비교'}</span></div><AnimatePresence mode="wait" initial={false}><motion.div className="detail-content" key={selected?.id || 'empty'} initial={reduce ? false : {opacity: 0, y: 5}} animate={{opacity: 1, y: 0}} exit={{opacity: 0}} transition={{duration: reduce ? 0 : 0.18}}>{selected ? <>
                 <div className="result-overview"><span className="article-kicker">선택한 주장</span><h3>{selected.quote}</h3><Badge claim={selected}/><p><SourceAnnotatedText text={selected.summary} sources={liveResult?.sources ?? []}/></p></div>
@@ -1098,7 +1092,7 @@ export default function FactCheckDashboard() {
     <Modal open={dialog !== null} title={dialog === 'external-consent' ? '외부 서비스 전송 동의' : dialog === 'storage-consent' ? '대화 저장 설정' : activeDocument?.title || (dialog === 'guide' ? '근거를 읽는 세 가지 원칙' : '검증 안내')} onClose={() => {pendingConsent.current = false; setDialog(null);}} footer={dialog === 'external-consent' ? <div className="dialog-done"><button type="button" className="secondary-button" onClick={() => {pendingConsent.current = false; setDialog(null);}}>동의하지 않음</button><button type="button" className="secondary-button" onClick={acceptExternalConsent}>동의하고 시작</button></div> : dialog === 'storage-consent' ? <div className="dialog-done"><button type="button" className="secondary-button" onClick={() => setDialog(null)}>취소</button><button type="button" className="secondary-button" onClick={() => {applyStorageConsent(); setDialog(null);}}>설정 저장</button></div> : undefined}>
       {dialog === 'external-consent' || dialog === 'storage-consent' ? <div className="about-copy">
         {dialog === 'external-consent' ? <>
-        <p>의도 분석·검증·요약을 위해 입력한 텍스트, 확인 요청, 링크, 첨부 이미지와 필요한 이전 대화 맥락을 서버로 전송합니다. 설정된 AI 서비스(하이브(Hive) API를 통한 DeepSeek·OpenAI·Google Gemini·AI Gateway), TypeSafe JEV, 검색 서비스(Tavily 및 모델 제공자의 검색 기능)가 요청 처리에 사용될 수 있습니다. 검증할 때 주장별 YouTube 전용 검색도 별도로 실행할 수 있으며, 관련 동영상만 출처 후보에 표시합니다. 링크와 검색된 공개 페이지는 서버에서 읽고 YouTube 기능은 Google 서비스에 영상 ID를 전송해 자막·공개 영상 정보·댓글을 조회할 수 있습니다.</p>
+        <p>의도 분석·검증·요약을 위해 입력한 텍스트, 확인 요청, 링크, 첨부 이미지와 필요한 이전 대화 맥락을 서버로 전송합니다. 설정된 AI 서비스(하이브(Hive) API를 통한 DeepSeek·OpenAI·Google Gemini·AI Gateway), TypeSafe JEV, 검색 서비스(Tavily 및 모델 제공자의 검색 기능)가 요청 처리에 사용될 수 있습니다. 링크와 검색된 공개 페이지는 서버에서 읽으며 YouTube 기능은 Google 서비스에 영상 ID를 전송해 자막·공개 영상 정보·댓글을 조회할 수 있습니다.</p>
         <p>민감정보·제3자의 비공개 정보는 입력하지 마세요. 외부 제공자의 처리·보관 정책은 <a href="/privacy" target="_blank" rel="noopener noreferrer">개인정보 처리방침</a>과 <a href="/terms" target="_blank" rel="noopener noreferrer">이용약관</a>에서 확인해 주세요. 이 안내는 법적 검토 완료를 의미하지 않습니다.</p>
         <p>전송 동의는 이 브라우저에서 안내 버전만 저장해 다음 질문과 새로고침 후에도 유지합니다. 동의 철회·사이트 데이터 삭제·안내 범위 변경 시 다시 확인하며, 브라우저 저장이 차단되면 현재 화면에서만 유지합니다. 거절하면 외부 호출을 하지 않고 입력을 보존합니다. 대화 저장은 별도 선택이며 자동으로 켜지지 않습니다.</p>
         </> : <p>대화 저장은 외부 전송 동의와 별개입니다. 저장을 꺼도 기존 기록은 남으며 대화 목록의 삭제 버튼으로 지울 수 있습니다.</p>}

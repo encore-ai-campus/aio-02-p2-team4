@@ -164,7 +164,7 @@ def test_tavily_search_is_preferred_and_llm_search_is_the_fallback(monkeypatch):
         tavily_api_key=SecretStr("tvly-test"),
     ))
     update = asyncio.run(adapters.search(state))
-    assert requested_hosts == ["api.tavily.com", "api.tavily.com"]
+    assert requested_hosts == ["api.tavily.com"]
     assert update["sources"][0]["searchProvider"] == "tavily_search"
 
     requested_hosts.clear()

@@ -15,7 +15,6 @@ from providers import (
     request_search,
     search_candidates,
 )
-from youtube import youtube_video_id
 
 
 _SEARCH_PLAN = [
@@ -37,7 +36,7 @@ _SEARCH_PLAN = [
     },
     {
         "sourceType": "유튜브",
-        "queryHint": "매 검증에서 관련 동영상 페이지를 검색하며 영상의 주장을 사실로 확정하지 않습니다.",
+        "queryHint": "관련 인터뷰·분석 영상의 공개 페이지를 검색하되 영상 자체의 주장을 사실로 확정하지 않음",
     },
 ]
 
@@ -378,36 +377,6 @@ def _project_candidates(
     return _select_diverse_sources(list(found.values()), prefer_finance=prefer_finance)
 
 
-def _is_youtube_video_candidate(candidate: dict) -> bool:
-    url = candidate_url(candidate.get("url")) if isinstance(candidate, dict) else None
-    return bool(url and youtube_video_id(url))
-
-
-def _project_candidates_with_youtube(
-    candidates: list[dict], prefer_finance: bool = False, exclude_urls: list[str] | None = None,
-) -> list[dict]:
-    """Keep one relevant YouTube video within the shared six-source limit."""
-    other_candidates = []
-    youtube_candidates = []
-    for candidate in candidates:
-        url = candidate_url(candidate.get("url")) if isinstance(candidate, dict) else None
-        if url and source_type_for_url(url) == "유튜브":
-            if _is_youtube_video_candidate(candidate):
-                youtube_candidates.append(candidate)
-            continue
-        other_candidates.append(candidate)
-
-    selected = _project_candidates(
-        other_candidates, prefer_finance=prefer_finance, exclude_urls=exclude_urls,
-    )
-    selected_youtube = _project_candidates(
-        youtube_candidates, exclude_urls=exclude_urls,
-    )
-    if not selected_youtube:
-        return selected
-    return [*selected[:5], selected_youtube[0], *selected[5:]][:6]
-
-
 def build_search_query(text: str) -> str:
     """Conservative fallback when extraction did not supply semantic keywords."""
     query = " ".join(text.split()).strip()
@@ -462,16 +431,13 @@ async def search_sources(
                 "For Korean questions prefer relevant Korean news and blogs, then international primary sources and reporting. "
                 "Do not add a foreign-language page solely for diversity or return copies from one publisher. "
                 "Avoid excludedUrls and find alternative relevant pages for the supplied queries. "
-                "Include Reddit and DCInside only when directly relevant as labeled context candidates. "
-                "Reserve one of the four search passes for a targeted YouTube search using youtubeQueries. "
-                "Run that pass on every verification and return only directly relevant video pages, not channels or playlists. "
+                "Include Reddit, DCInside, and YouTube only when directly relevant as labeled context candidates. "
                 "Exclude Naver Knowledge iN (kin.naver.com) answers entirely; they are never cited. "
                 "Do not judge truth or treat snippets as verified evidence."
             ),
             input_data={
                 "claims": search_claims,
                 "primaryQueries": primary_queries,
-                "youtubeQueries": ["site:youtube.com " + query for query in primary_queries],
                 "focus": state.get("focus", ""),
                 "searchPlan": _SEARCH_PLAN,
                 "excludedUrls": state.get("excludedSourceUrls", []),
@@ -483,7 +449,7 @@ async def search_sources(
             {**candidate, "searchProvider": provider_name, "searchQuery": candidate_query}
             for candidate in search_candidates(data, active)
         ]
-        selected = _project_candidates_with_youtube(
+        selected = _project_candidates(
             candidates, prefer_finance=bool(state.get("stockSymbols")),
             exclude_urls=state.get("excludedSourceUrls", []),
         )

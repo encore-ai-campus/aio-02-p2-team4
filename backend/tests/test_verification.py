@@ -580,7 +580,6 @@ def test_verify_claims_sends_only_verified_source_text():
         assert body["store"] is False
         assert body["max_output_tokens"] >= 12000
         assert body["text"]["format"]["strict"] is True
-        assert "For every contradicted claim or part, state the evidence-backed correct alternative in confirmed" in body["instructions"]
         assert [source["id"] for source in input_data["sources"]] == ["s1"]
         assert input_data["sources"][0]["passages"] == [{"start": 0, "end": len(quote), "text": quote}]
         assert "snippet" not in request.content.decode()

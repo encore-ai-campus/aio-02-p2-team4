@@ -659,8 +659,6 @@ async def verify_claims(
                 "Judge every factual or otherwise checkable claim exactly once using only the supplied verified source text. "
                 "When a claim combines multiple independently verifiable facts, return them as separate parts; leave parts empty for a single assertion. "
                 "Give each part its own statement, verdict, score, summary, confirmed details, unresolved details, and evidence. "
-                "For every contradicted claim or part, state the evidence-backed correct alternative in confirmed and cite the verified passage with its bracketed source number; do not merely repeat that the claim is false. "
-                "If verified sources refute the claim but do not establish a correct alternative, leave confirmed empty and describe this limit in unresolved; never infer a correction beyond the quoted evidence. "
                 "Each claim carries neighboring sentences from the submitted text and, for link inputs, "
                 "the article title and date: resolve demonstratives such as '이번' or '그' against them. "
                 "When a claim reports what someone else said, judge separately whether it was said and whether "

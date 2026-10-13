@@ -227,9 +227,6 @@ def _stub_transcript_api(monkeypatch, snippets=None, error=None):
     snippets = snippets if snippets is not None else []
 
     class Fakeapi:
-        def __init__(self, http_client=None):
-            pass
-
         def fetch(self, video_id, languages=("en",)):
             if error is not None:
                 raise error
@@ -273,49 +270,3 @@ def test_transcript_failure_stays_unavailable(monkeypatch):
         "text": None, "status": "unavailable"}
     assert asyncio.run(youtube.fetch_transcript_text("not-an-id!!")) == {
         "text": None, "status": "unavailable"}
-
-
-def test_transcript_http_requests_share_a_bounded_deadline(monkeypatch):
-    from requests import Session
-    import youtube
-
-    timeouts = []
-
-    def fake_request(self, method, url, **kwargs):
-        timeouts.append(kwargs['timeout'])
-
-    class Fakeapi:
-        def __init__(self, http_client):
-            self.client = http_client
-
-        def fetch(self, video_id, languages):
-            self.client.get('https://www.youtube.com/mock-captions')
-            if languages == ['ko']:
-                raise ValueError('NO_KOREAN_CAPTIONS')
-            return types.SimpleNamespace(snippets=[types.SimpleNamespace(text='Caption', start=0, duration=1)])
-
-    module = types.ModuleType('youtube_transcript_api')
-    module.YouTubeTranscriptApi = Fakeapi
-    monkeypatch.setitem(sys.modules, 'youtube_transcript_api', module)
-    monkeypatch.setattr(Session, 'request', fake_request)
-    assert asyncio.run(youtube.fetch_transcript_text('abcdefghijk'))['status'] == 'collected'
-    assert len(timeouts) == 2
-    assert 0 < timeouts[1] <= timeouts[0] <= youtube._TRANSCRIPT_TIMEOUT_SECONDS
-
-
-def test_transcript_thread_wait_is_bounded(monkeypatch):
-    import youtube
-
-    cancelled = []
-
-    async def never_finishes(*args, **kwargs):
-        try:
-            await asyncio.Event().wait()
-        finally:
-            cancelled.append(True)
-
-    monkeypatch.setattr(asyncio, 'to_thread', never_finishes)
-    monkeypatch.setattr(youtube, '_TRANSCRIPT_TIMEOUT_SECONDS', 0.01)
-    result = asyncio.run(youtube.fetch_transcript_text('abcdefghijk'))
-    assert result == {'text': None, 'status': 'unavailable'}
-    assert cancelled == [True]
