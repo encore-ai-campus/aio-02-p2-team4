@@ -8,7 +8,7 @@ import type { Claim } from './demo-state';
 import { MODEL_OPTIONS } from '../lib/fact-check-contract';
 import type { AgentStage, AnswerBlock, AttachedImage, ContentSummary, FactCheckAnswer, FactClaim, FactEvidence, FactCheckRequest, FactCheckResult, FactSource, ModelOption, ModelPreference, ProgressClaim, ProgressSource } from '../lib/fact-check-contract';
 import { sourceDiscoveryLabel } from '../lib/source-discovery';
-import { elapsedSecondsSince, progressElapsedSeconds } from '../lib/progress-timing';
+import { elapsedSecondsSince, progressElapsedSeconds, sourceElapsedSeconds } from '../lib/progress-timing';
 import type { ProgressTiming } from '../lib/progress-timing';
 import { scoreBand, scoreLabel, verdictBreakdown } from '../lib/fact-score';
 import { stripYoutubeApiDataForExport } from '../lib/youtube-context';
@@ -343,7 +343,7 @@ function ProgressReply({progress}: {progress: ChatProgress}) {
   useEffect(() => {
     if (progress.completed || progress.error) return;
     setNow(performance.now());
-    const timer = window.setInterval(() => setNow(performance.now()), 1000);
+    const timer = window.setInterval(() => setNow(performance.now()), 100);
     return () => window.clearInterval(timer);
   }, [progress.requestStartedAt, progress.completed, progress.error]);
   const elapsedSeconds = progressElapsedSeconds(progress, now);
@@ -358,8 +358,8 @@ function ProgressReply({progress}: {progress: ChatProgress}) {
     {progress.status && <p className="progress-current-stage" data-testid="progress-stage">
       <span>{progress.status}</span><time>총 {elapsedSeconds.toFixed(1)}초 경과</time>
     </p>}
-    {progress.sourcesFound !== undefined && progress.sourcesRead === undefined && <ProgressSourceList title="검색된 출처 후보" sources={progress.sourcesFound} elapsedSeconds={progress.sourcesFoundElapsedSeconds} testId="progress-candidate-source"/>}
-    {progress.sourcesRead !== undefined && <ProgressSourceList title="가져온 원문" sources={progress.sourcesRead} elapsedSeconds={progress.sourcesReadElapsedSeconds} testId="progress-read-source"/>}
+    {progress.sourcesFound !== undefined && progress.sourcesRead === undefined && <ProgressSourceList title="검색된 출처 후보" sources={progress.sourcesFound} elapsedSeconds={progress.sourcesFoundElapsedSeconds} durationLabel="검색" testId="progress-candidate-source"/>}
+    {progress.sourcesRead !== undefined && <ProgressSourceList title="가져온 원문" sources={progress.sourcesRead} elapsedSeconds={progress.sourcesReadElapsedSeconds} durationLabel="읽기" testId="progress-read-source"/>}
     {claims !== undefined && (claims.length
       ? <ol className="progress-claim-list">{claims.map(claim => <li className="progress-claim" key={claim.id}>
           <div className="progress-claim-heading"><strong>{claim.quote}</strong><span>{claim.verdict}</span></div>
@@ -383,9 +383,9 @@ function ProgressReply({progress}: {progress: ChatProgress}) {
         </section>;
         }
 
-        function ProgressSourceList({title, sources, elapsedSeconds, testId}: {title: string; sources: ProgressSource[]; elapsedSeconds?: number; testId: string}) {
+        function ProgressSourceList({title, sources, elapsedSeconds, durationLabel, testId}: {title: string; sources: ProgressSource[]; elapsedSeconds?: number; durationLabel: string; testId: string}) {
         return <div className="progress-source-block" data-testid={`${testId}-group`}>
-        <h4><ScrambleText>{title}</ScrambleText>{elapsedSeconds !== undefined && <span className="progress-milestone-time"> · 요청 후 {elapsedSeconds.toFixed(1)}초에 완료</span>}</h4>
+        <h4><ScrambleText>{title}</ScrambleText>{elapsedSeconds !== undefined && <span className="progress-milestone-time"> · {durationLabel} {elapsedSeconds.toFixed(1)}초</span>}</h4>
         {sources.length > 0
         ? <ul className="progress-source-list">{sources.map((source, index) => {
             const href = safeSourceUrl(source.url);
@@ -734,6 +734,7 @@ export default function FactCheckDashboard() {
     const current = generation.current;
     const startedAt = performance.now();
     const elapsedSeconds = () => elapsedSecondsSince(startedAt, performance.now());
+    const stageStartedAt: Partial<Record<AgentStage, number>> = {};
     let progressMessageId: string | null = null;
     const thinkingId = addMessage({role: 'assistant', thinking: true});
     progressMessageId = thinkingId;
@@ -834,12 +835,13 @@ export default function FactCheckDashboard() {
           signal: controller.signal,
           onStage: stage => {
             if (generation.current !== current) return;
+            stageStartedAt[stage.stage] = performance.now();
             updateProgressMessage({status: stage.message, statusStage: stage.stage});
             setNotice(stage.message);
           },
           onSources: event => {
             if (generation.current !== current) return;
-            const elapsed = elapsedSeconds();
+            const elapsed = sourceElapsedSeconds(stageStartedAt, event.phase, performance.now());
             updateProgressMessage(event.phase === 'found'
               ? {sourcesFound: event.sources, sourcesFoundElapsedSeconds: elapsed}
               : {sourcesRead: event.sources, sourcesReadElapsedSeconds: elapsed});

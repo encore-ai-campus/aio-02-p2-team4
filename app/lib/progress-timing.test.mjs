@@ -1,6 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {elapsedSecondsSince, progressElapsedSeconds} from './progress-timing.ts';
+import {elapsedSecondsSince, progressElapsedSeconds, sourceElapsedSeconds} from './progress-timing.ts';
+
+test('source reading shows 6.1 seconds of reading instead of 61.3 seconds of request time', () => {
+  assert.equal(sourceElapsedSeconds({searching:45000,reading:55200},'read',61300),6.1);
+});
+
+test('a re-read excludes the earlier verification wait and uses its own start', () => {
+  const starts = {searching:1000,reading:4000};
+  starts.reading = 60000;
+  assert.equal(sourceElapsedSeconds(starts,'read',62100),2.1);
+  assert.equal(sourceElapsedSeconds(starts,'found',4000),3);
+});
+
+test('source time is omitted when its phase never reported a start', () => {
+  assert.equal(sourceElapsedSeconds({reading:55200},'found',61300),undefined);
+});
 
 test('total request time includes the wait before progress and continues through repeated stages', () => {
   const progress = {requestStartedAt:1000,statusElapsedSeconds:6.1};
