@@ -24,3 +24,14 @@ def test_storage_errors_do_not_expose_secrets(monkeypatch):
         assert response.status_code == 503
         assert 'private' not in response.text and 'secret' not in response.text
         assert client.post('/api/conversations',content='x'*524289).status_code == 413
+
+
+def test_bulk_delete_requires_session_and_never_exposes_secrets(monkeypatch):
+    monkeypatch.setenv('CONVERSATION_SESSION_SECRET','s'*40)
+    monkeypatch.setenv('DATABASE_URL','postgresql://private:secret@unused/db')
+    with TestClient(app) as client:
+        assert client.delete('/api/conversations').status_code == 401
+        token = client.post('/api/conversations/session',json={'storageConsent':True}).json()['token']
+        failed = client.delete('/api/conversations',headers={'x-ton-session':token})
+        assert failed.status_code == 503
+        assert 'private' not in failed.text and 'secret' not in failed.text

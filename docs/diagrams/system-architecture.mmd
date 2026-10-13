@@ -1,0 +1,47 @@
+flowchart LR
+    subgraph FRONTEND["Frontend · 사용자 화면"]
+        direction TB
+        USER["사용자"] --> UI["Next.js 화면"]
+        UI --> PROXY["서버 프록시 · Vercel"]
+    end
+
+    subgraph BACKEND["Backend · 요청 처리"]
+        direction TB
+        API["FastAPI"] --> GRAPH["LangGraph · 검증 흐름 제어"]
+        API --> AUX["보조 API · 의도·요약·JEV"]
+        API --> CONV["대화 저장 API"]
+        GRAPH --> ADAPTERS["검색·원문·모델·JEV 어댑터"]
+    end
+
+    subgraph DATA["Data · 처리 상태와 저장소"]
+        direction TB
+        STATE["FactCheckState · 주장·출처·근거·진단"]
+        RESULT["응답 데이터 · 판정·인용·출처"]
+        DB[("Render PostgreSQL · conversations / messages")]
+    end
+
+    subgraph EXTERNAL["External services · 외부 서비스"]
+        direction TB
+        SEARCH["Tavily · LLM 웹 검색"]
+        SOURCES["웹 원문 · YouTube 자막"]
+        MARKET["Finnhub · 시세·차트"]
+        MODELS["Hive / DeepSeek V4.1 Flash MAX<br/>OpenAI / GPT-6 Luna MAX/Fast<br/>Gemini 3.8·3.7 Flash HIGH"]
+    end
+
+    PROXY --> API
+    GRAPH --> STATE --> RESULT
+    RESULT --> UI
+    CONV --> DB
+    ADAPTERS --> SEARCH
+    ADAPTERS --> SOURCES
+    ADAPTERS --> MARKET
+    ADAPTERS --> MODELS
+
+    classDef frontend fill:#eaf2ff,stroke:#4778b8,color:#172b4d;
+    classDef backend fill:#e9f6ee,stroke:#4b8b62,color:#183b25;
+    classDef data fill:#fff4d6,stroke:#b18b32,color:#493707;
+    classDef external fill:#f1f1f1,stroke:#888,color:#222;
+    class USER,UI,PROXY frontend;
+    class API,GRAPH,AUX,CONV,ADAPTERS backend;
+    class STATE,RESULT,DB data;
+    class SEARCH,SOURCES,MARKET,MODELS external;

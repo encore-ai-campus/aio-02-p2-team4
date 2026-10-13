@@ -1,0 +1,61 @@
+flowchart LR
+    subgraph FRONTEND["Frontend · 입력과 결과 표시"]
+        direction TB
+        USER["사용자"] --> INPUT["질문·링크 입력"]
+        INPUT --> CONSENT["외부 전송 동의"]
+        CONSENT --> PROXY["Next.js 서버 프록시"]
+        OUTPUT["판정·근거·출처 표시"]
+    end
+
+    subgraph BACKEND["Backend · 검증 처리"]
+        direction TB
+        API["FastAPI · 요청 분류"]
+        API --> EXTRACT["1. 입력 분석 · 주장 추출"]
+        EXTRACT --> SEARCH["2. 출처 검색"]
+        SEARCH --> READ["3. 원문 수집"]
+        READ --> VERIFY["4. 주장·인용 검증"]
+        VERIFY --> RECOVERY{"재탐색 조건 충족?"}
+        RECOVERY -->|"예 · 최대 1회"| SEARCH
+        RECOVERY -->|"아니요"| FINAL["5. 결과 정리 · 계약 확인"]
+        API --> OTHER["일반 대화·요약 처리"]
+        API --> CONV["대화 저장 API · 동의·소유권 확인"]
+    end
+
+    subgraph DATA["Data · 요청·처리 결과·저장"]
+        direction TB
+        REQUEST["요청 · text / focus / linkUrl / consent"]
+        STATE["FactCheckState · claims / sources / evidence / diagnostics"]
+        RESPONSE["응답 · result / 판정 / 인용 / 출처"]
+        DB[("Render PostgreSQL · 동의한 대화만 저장")]
+    end
+
+    subgraph EXTERNAL["External services · 외부 자료와 공급자"]
+        direction TB
+        SEARCH_TOOLS["Tavily · LLM 웹 검색"]
+        SOURCES["웹 원문 · YouTube 자막"]
+        MODELS["DeepSeek · OpenAI · Gemini"]
+        JEV["TypeSafe JEV"]
+    end
+
+    PROXY -->|"JSON 요청"| REQUEST --> API
+    EXTRACT -.-> STATE
+    SEARCH -.-> STATE
+    READ -.-> STATE
+    VERIFY -.-> STATE
+    FINAL --> RESPONSE
+    OTHER --> RESPONSE
+    RESPONSE -->|"NDJSON 응답"| OUTPUT
+    CONV --> DB
+    SEARCH --> SEARCH_TOOLS
+    READ --> SOURCES
+    VERIFY --> MODELS
+    VERIFY -. "선택 경로" .-> JEV
+
+    classDef frontend fill:#eaf2ff,stroke:#4778b8,color:#172b4d;
+    classDef backend fill:#e9f6ee,stroke:#4b8b62,color:#183b25;
+    classDef data fill:#fff4d6,stroke:#b18b32,color:#493707;
+    classDef external fill:#f1f1f1,stroke:#888,color:#222;
+    class USER,INPUT,CONSENT,PROXY,OUTPUT frontend;
+    class API,EXTRACT,SEARCH,READ,VERIFY,RECOVERY,FINAL,OTHER,CONV backend;
+    class REQUEST,STATE,RESPONSE,DB data;
+    class SEARCH_TOOLS,SOURCES,MODELS,JEV external;

@@ -140,3 +140,10 @@ class ConversationStore:
                     raise StorageError('NOT_FOUND')
                 await conn.execute('DELETE FROM messages WHERE conversation_id=$1',id)
                 await conn.execute("UPDATE conversations SET title='',deleted_at=clock_timestamp() WHERE id=$1 AND owner_id=$2",id,owner)
+
+    async def delete_all(self, owner: UUID):
+        async with self.connection() as conn:
+            async with conn.transaction():
+                await conn.execute('DELETE FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE owner_id=$1 AND deleted_at IS NULL)',owner)
+                result=await conn.execute("UPDATE conversations SET title='',deleted_at=clock_timestamp() WHERE owner_id=$1 AND deleted_at IS NULL",owner)
+                return int(result.rsplit(' ',1)[-1])

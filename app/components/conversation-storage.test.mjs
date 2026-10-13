@@ -6,6 +6,18 @@ function api() {
   const rows=[];const conversation={id:crypto.randomUUID(),title:'대화',createdAt:'2026-10-04',updatedAt:'2026-10-04'};
   return {rows,session:async()=>{},create:async()=>conversation,append:async(id,data)=>{rows.push({id,...data});},list:async()=>({items:[conversation],nextCursor:null}),get:async()=>({conversation,messages:[],beforeSequence:null}),delete:async()=>{}};
 }
+test('deleteAll wipes server history and resets local state',async()=>{
+  const client=api();let wiped=false;
+  client.deleteAll=async()=>{wiped=true;client.rows.length=0;return 1;};
+  client.list=async()=>wiped?{items:[],nextCursor:null}:{items:[{id:crypto.randomUUID(),title:'대화',createdAt:'2026-10-04',updatedAt:'2026-10-04'}],nextCursor:null};
+  const store=new ConversationStorage(client,()=>{});store.setConsent(true);
+  await store.saveMessage(message('user'),store.epoch);
+  await store.deleteAllConversations();
+  assert.equal(wiped,true);
+  assert.equal(store.items.length,0);
+  assert.equal(store.active,null);
+  assert.equal(store.pending.length,0);
+});
 test('consent defaults off and disabling it prevents new saves',async()=>{
   const client=api();const store=new ConversationStorage(client,()=>{});
   await store.saveMessage(message('user'),store.epoch);

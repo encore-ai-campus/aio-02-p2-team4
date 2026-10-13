@@ -112,3 +112,9 @@ async def append(id: UUID, request: Request, identity=Depends(owner)):
 async def delete(id: UUID, request: Request, identity=Depends(owner)):
     await request.app.state.conversation_store.delete(identity,id)
     return JSONResponse({'deleted':True},headers={'Cache-Control':'no-store'})
+
+
+@router.delete('')
+async def delete_all(request: Request, identity=Depends(owner)):
+    count = await request.app.state.conversation_store.delete_all(identity)
+    return JSONResponse({'deleted':count},headers={'Cache-Control':'no-store'})

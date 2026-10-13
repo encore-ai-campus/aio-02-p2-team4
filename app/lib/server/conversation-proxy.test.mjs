@@ -34,3 +34,16 @@ test('does not forward client owner headers and maps upstream errors safely',asy
     assert.doesNotMatch(await response.text(),/postgres|secret/);
   } finally {global.fetch=original;}
 });
+test('allows bulk delete on the collection root and forwards it',async()=>{
+  const original=global.fetch;
+  let seen;
+  global.fetch=async(url,options)=>{seen={url:String(url),method:options.method};return Response.json({deleted:3});};
+  try {
+    const req=new Request('http://localhost:3000/api/conversations',{method:'DELETE',headers:{origin:'http://localhost:3000'}});
+    const response=await handleConversationRequest(req,[]);
+    assert.equal(response.status,200);
+    assert.match(seen.url,/\/api\/conversations$/);
+    assert.equal(seen.method,'DELETE');
+    assert.deepEqual(await response.json(),{deleted:3});
+  } finally {global.fetch=original;}
+});
