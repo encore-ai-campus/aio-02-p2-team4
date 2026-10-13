@@ -303,3 +303,29 @@ def test_youtube_without_api_reader_is_marked_not_configured():
     assert state['sources'][0]['youtubeDataStatus'] == 'not_configured'
     assert state['sources'][0]['youtubeComments'] == []
     assert state['sourceTexts'] == {}
+
+
+def test_slow_youtube_read_does_not_hold_completed_web_sources(monkeypatch):
+    monkeypatch.setattr(sources, '_YOUTUBE_READ_TIMEOUT', 0.01)
+    cancelled = []
+
+    async def reader(url):
+        return 'Verified article content', url
+
+    async def youtube_reader(url):
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.append(True)
+
+    async def run():
+        return await sources.read_sources({'sources': [
+            {'id': 's1', 'url': 'https://example.org/article', 'sourceType': '웹 출처'},
+            {'id': 's2', 'url': 'https://www.youtube.com/watch?v=abcdefghijk', 'sourceType': '유튜브'},
+        ]}, reader=reader, youtube_reader=youtube_reader)
+
+    state = asyncio.run(asyncio.wait_for(run(), timeout=1))
+    assert cancelled == [True]
+    assert state['sourceTexts'] == {'s1': 'Verified article content'}
+    assert state['sources'][0]['accessStatus'] == 'verified'
+    assert state['sources'][1]['youtubeDataStatus'] == 'unavailable'

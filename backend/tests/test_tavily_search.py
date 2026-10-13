@@ -153,3 +153,55 @@ def test_supplemental_title_search_does_not_repeat_youtube_search():
     assert len(requests) == 1
     assert requests[0]["query"] == "Link title"
     assert "include_domains" not in requests[0]
+
+
+def test_general_and_youtube_searches_start_together():
+    async def run():
+        from tavily_search import search_tavily
+
+        youtube_started = asyncio.Event()
+
+        async def handler(request):
+            if "include_domains" in json.loads(request.content):
+                youtube_started.set()
+            else:
+                await asyncio.wait_for(youtube_started.wait(), timeout=0.5)
+            return tavily_response([])
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await search_tavily({
+                "consent": True,
+                "claims": [{"id": "c1", "kind": "fact", "quote": "Claim"}],
+            }, api_key="tvly-test", client=client)
+
+    assert asyncio.run(run()) == {"sources": []}
+
+
+def test_general_search_failure_cancels_pending_youtube_request():
+    import pytest
+    from tavily_search import TavilyUnavailable, search_tavily
+
+    cancelled = []
+
+    async def run():
+        youtube_started = asyncio.Event()
+
+        async def handler(request):
+            if "include_domains" in json.loads(request.content):
+                youtube_started.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    cancelled.append(True)
+            await youtube_started.wait()
+            return httpx.Response(503, json={"error": "unavailable"})
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await search_tavily({
+                "consent": True,
+                "claims": [{"id": "c1", "kind": "fact", "quote": "Claim"}],
+            }, api_key="tvly-test", client=client)
+
+    with pytest.raises(TavilyUnavailable):
+        asyncio.run(asyncio.wait_for(run(), timeout=1))
+    assert cancelled == [True]

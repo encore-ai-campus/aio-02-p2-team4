@@ -94,7 +94,7 @@ def test_llm_search_is_used_directly_without_a_search_notice(monkeypatch):
         "modelPreference": "gpt-6-luna",
         "claims": [{"id": "c1", "kind": "fact", "quote": "Claim"}],
     }))
-    assert requested_paths == ["/v1/responses", "/v1/responses"]
+    assert requested_paths == ["/v1/responses"]
     assert update["sources"][0]["searchProvider"] == "openai_web_search"
     assert "searchNotice" not in update
 
@@ -170,7 +170,7 @@ def test_tavily_search_is_preferred_and_llm_search_is_the_fallback(monkeypatch):
     requested_hosts.clear()
     adapters = make_runtime_adapters(Settings(api_key=SecretStr("test-openai-key")))
     update = asyncio.run(adapters.search(state))
-    assert requested_hosts == ["api.openai.com", "api.openai.com"]
+    assert requested_hosts == ["api.openai.com"]
     assert update["sources"][0]["searchProvider"] == "openai_web_search"
 
 

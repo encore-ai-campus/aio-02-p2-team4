@@ -106,19 +106,25 @@ async def search_tavily(
             if isinstance(result, dict)
         ]
 
-    candidate_groups = [await fetch_results(query) for query in queries]
-    youtube_groups = []
+    async def fetch_youtube(query: str) -> list[dict]:
+        try:
+            return await fetch_results(query, youtube_only=True)
+        except TavilyUnavailable as exc:
+            logger.warning("Separate YouTube search failed (%s)", type(exc).__name__)
+            return []
+
+    tasks = [asyncio.create_task(fetch_results(query)) for query in queries]
     if include_youtube_search:
-        async def fetch_youtube(query: str) -> list[dict]:
-            try:
-                return await fetch_results(query, youtube_only=True)
-            except TavilyUnavailable as exc:
-                logger.warning("Separate YouTube search failed (%s)", type(exc).__name__)
-                return []
+        tasks.extend(asyncio.create_task(fetch_youtube(query)) for query in queries)
+    try:
+        candidate_groups = await asyncio.gather(*tasks)
+    except BaseException:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
 
-        youtube_groups = await asyncio.gather(*(fetch_youtube(query) for query in queries))
-
-    candidates = [candidate for group in [*candidate_groups, *youtube_groups] for candidate in group if candidate]
+    candidates = [candidate for group in candidate_groups for candidate in group if candidate]
     selected = _project_candidates_with_youtube(
         candidates, prefer_finance=bool(state.get("stockSymbols")),
         exclude_urls=state.get("excludedSourceUrls", []),

@@ -111,8 +111,7 @@ def test_jev_endpoint_returns_scored_result(monkeypatch):
 
     def handler(request):
         if request.url.host == "api.openai.com":
-            search_input = json.loads(json.loads(request.content)["input"])
-            seen.append("youtube_search" if "youtubeQuery" in search_input else "search")
+            seen.append("search")
             return httpx.Response(200, json={"status": "completed", "output": [
                 {"type": "web_search_call", "status": "completed", "action": {"sources": [
                     {"url": "https://example.org/boiling-point", "title": "Boiling point reference"},
@@ -168,7 +167,7 @@ def test_jev_endpoint_returns_scored_result(monkeypatch):
         assert [source["url"] for source in body["sources"]] == [
             "https://example.org/boiling-point",
         ]
-        assert seen == ["search", "youtube_search", "jev"]
+        assert seen == ["search", "jev"]
 
 
 def test_jev_endpoint_maps_gateway_failure_to_502(monkeypatch):

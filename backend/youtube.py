@@ -1,6 +1,7 @@
 """Small, read-only adapter for documented public YouTube Data API fields."""
 import json
 import re
+import time
 from datetime import datetime
 from urllib.parse import parse_qs, urlsplit
 
@@ -12,6 +13,7 @@ MAX_COMMENT_COUNT = 10
 MAX_RESPONSE_BYTES = 256_000
 MAX_TRANSCRIPT_SECONDS = 1800
 MAX_TRANSCRIPT_CHARS = 20_000
+_TRANSCRIPT_TIMEOUT_SECONDS = 8
 MIN_YOUTUBE_VIEWS = 10_000
 _VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 _VIEW_COUNT = re.compile(r"^\d{1,30}$")
@@ -132,20 +134,32 @@ async def fetch_transcript_text(video_id: str) -> dict:
     import asyncio
 
     def _load():
+        from requests import Session
         from youtube_transcript_api import YouTubeTranscriptApi
 
-        api = YouTubeTranscriptApi()
-        last_error: Exception | None = None
-        for languages in (["ko"], ["en"]):
-            try:
-                fetched = api.fetch(video_id, languages=languages)
-                return list(fetched.snippets)
-            except Exception as exc:  # noqa: BLE001 - any fetch failure means no captions
-                last_error = exc
-        raise last_error if last_error is not None else ValueError("NO_TRANSCRIPT")
+        deadline = time.monotonic() + _TRANSCRIPT_TIMEOUT_SECONDS
+
+        class DeadlineSession(Session):
+            def request(self, *args, **kwargs):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("TRANSCRIPT_TIMEOUT")
+                kwargs["timeout"] = remaining
+                return super().request(*args, **kwargs)
+
+        with DeadlineSession() as session:
+            api = YouTubeTranscriptApi(http_client=session)
+            last_error: Exception | None = None
+            for languages in (["ko"], ["en"]):
+                try:
+                    fetched = api.fetch(video_id, languages=languages)
+                    return list(fetched.snippets)
+                except Exception as exc:  # noqa: BLE001 - any fetch failure means no captions
+                    last_error = exc
+            raise last_error if last_error is not None else ValueError("NO_TRANSCRIPT")
 
     try:
-        snippets = await asyncio.to_thread(_load)
+        snippets = await asyncio.wait_for(asyncio.to_thread(_load), timeout=_TRANSCRIPT_TIMEOUT_SECONDS)
     except Exception:
         return {"text": None, "status": "unavailable"}
     if not snippets:

@@ -29,6 +29,7 @@ _DOORWAY_MARKERS = (
 )
 _MAX_DOORWAY_TEXT = 300
 _MAX_CONCURRENT_READS = 4
+_YOUTUBE_READ_TIMEOUT = 8
 
 
 def _is_japanese_page_text(text):
@@ -443,7 +444,8 @@ async def _read_candidate(source, *, reader, youtube_reader):
         item['youtubeDataStatus'] = 'not_configured' if youtube_reader is None else 'unavailable'
         if youtube_reader is not None:
             try:
-                data = await youtube_reader(source['url'])
+                async with asyncio.timeout(_YOUTUBE_READ_TIMEOUT):
+                    data = await youtube_reader(source['url'])
                 title = data.get('title') if isinstance(data, dict) else None
                 channel_title = data.get('channelTitle') if isinstance(data, dict) else None
                 published_at = data.get('publishedAt') if isinstance(data, dict) else None
