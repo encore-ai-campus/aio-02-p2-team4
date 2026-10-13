@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1050" viewBox="0 0 1800 1050" role="img" aria-labelledby="title desc">
+  <title id="title">True or Not 검증 아키텍처 구성도</title>
+  <desc id="desc">Frontend, Backend, Data, 외부 서비스 영역과 다섯 단계 검증 흐름</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#64748b"/></marker>
+    <style>
+      text{font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;fill:#182230}
+      .title{font-size:34px;font-weight:700}.sub{font-size:17px;fill:#526171}
+      .head{font-size:20px;font-weight:700}.label{font-size:17px;font-weight:600}.small{font-size:14px;fill:#435164}
+      .panel{stroke-width:2;rx:22}.node{stroke-width:1.7;rx:14}.edge{fill:none;stroke:#64748b;stroke-width:2.2;marker-end:url(#arrow)}.dash{fill:none;stroke:#8492a3;stroke-width:1.8;stroke-dasharray:7 6;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect width="1800" height="1050" fill="#f7f9fc"/>
+  <text class="title" x="52" y="62">True or Not 검증 아키텍처 구성도</text>
+  <text class="sub" x="52" y="96">Frontend는 입력·표시, Backend는 검증 처리, Data는 요청·상태·결과·저장을 담당합니다.</text>
+
+  <rect class="panel" x="40" y="130" width="340" height="850" fill="#eef5ff" stroke="#8bb3e8"/>
+  <rect class="panel" x="410" y="130" width="940" height="500" fill="#eff8f1" stroke="#8fc39c"/>
+  <rect class="panel" x="410" y="660" width="940" height="320" fill="#fff8e5" stroke="#e2c56d"/>
+  <rect class="panel" x="1380" y="130" width="380" height="850" fill="#f1f3f5" stroke="#aab4bf"/>
+
+  <text class="head" x="66" y="174" fill="#315d96">FRONTEND · 입력과 결과 화면</text>
+  <text class="head" x="436" y="174" fill="#38724a">BACKEND · 요청 분류와 검증</text>
+  <text class="head" x="436" y="704" fill="#8a6a12">DATA · 요청·처리 상태·저장 결과</text>
+  <text class="head" x="1406" y="174" fill="#526171">외부 자료·서비스</text>
+
+  <!-- main request and verification flow -->
+  <path class="edge" d="M210 276 V324"/>
+  <path class="edge" d="M210 404 V452"/>
+  <path class="edge" d="M350 492 H380 V700 H430 V795 H450"/>
+  <path class="edge" d="M450 795 H400 V560 H430 V420 H460"/>
+  <path class="edge" d="M585 390 V300"/>
+  <path class="edge" d="M610 260 H630"/>
+  <path class="edge" d="M780 260 H800"/>
+  <path class="edge" d="M950 260 H970"/>
+  <path class="edge" d="M1120 260 H1140"/>
+  <path class="edge" d="M1045 300 V360"/>
+  <path class="edge" d="M1160 400 H1215 V300"/>
+  <path class="edge" d="M930 400 H900 V565 H705 V300"/>
+  <path class="edge" d="M875 300 V620 H850 V765"/>
+  <path class="edge" d="M1215 300 V730 H1160 V755"/>
+  <path class="edge" d="M980 562 V720 H1160 V755"/>
+  <path class="edge" d="M650 795 H690"/>
+  <path class="edge" d="M1000 795 H1040"/>
+  <path class="edge" d="M1040 795 H390 V785 H350"/>
+  <path class="edge" d="M1200 550 H1240 V850"/>
+  <path class="edge" d="M710 400 H800 V526 H850"/>
+
+  <!-- external tool connections -->
+  <path class="dash" d="M705 300 V330 H1360 V270 H1420"/>
+  <path class="dash" d="M875 300 V430 H1420"/>
+  <path class="dash" d="M1045 300 V590 H1420"/>
+
+  <!-- frontend nodes -->
+  <rect class="node" x="70" y="204" width="280" height="72" fill="#fff" stroke="#6c9bd5"/>
+  <text class="label" x="210" y="248" text-anchor="middle">사용자 입력</text>
+  <rect class="node" x="70" y="324" width="280" height="80" fill="#fff" stroke="#6c9bd5"/>
+  <text class="label" x="210" y="357" text-anchor="middle">외부 전송 동의</text><text class="small" x="210" y="383" text-anchor="middle">동의 후 요청 전송</text>
+  <rect class="node" x="70" y="452" width="280" height="80" fill="#fff" stroke="#6c9bd5"/>
+  <text class="label" x="210" y="485" text-anchor="middle">Next.js 서버 프록시</text><text class="small" x="210" y="511" text-anchor="middle">JSON 요청 · NDJSON 응답</text>
+  <rect class="node" x="70" y="740" width="280" height="92" fill="#fff" stroke="#6c9bd5"/>
+  <text class="label" x="210" y="779" text-anchor="middle">검증 결과 화면</text><text class="small" x="210" y="807" text-anchor="middle">판정 · 근거 · 출처</text>
+
+  <!-- backend routing and five stages -->
+  <rect class="node" x="460" y="360" width="250" height="80" fill="#fff" stroke="#65a878"/>
+  <text class="label" x="585" y="394" text-anchor="middle">FastAPI · Intent Gate</text><text class="small" x="585" y="420" text-anchor="middle">검증·요약·일반 요청 분류</text>
+  <rect class="node" x="470" y="220" width="140" height="80" fill="#fff" stroke="#65a878"/>
+  <text class="label" x="540" y="252" text-anchor="middle">1. 입력 분석</text><text class="small" x="540" y="278" text-anchor="middle">주장 추출</text>
+  <rect class="node" x="630" y="220" width="150" height="80" fill="#fff" stroke="#65a878"/>
+  <text class="label" x="705" y="252" text-anchor="middle">2. 출처 검색</text><text class="small" x="705" y="278" text-anchor="middle">검색 어댑터</text>
+  <rect class="node" x="800" y="220" width="150" height="80" fill="#fff" stroke="#65a878"/>
+  <text class="label" x="875" y="252" text-anchor="middle">3. 원문 수집</text><text class="small" x="875" y="278" text-anchor="middle">본문·URL 확보</text>
+  <rect class="node" x="970" y="220" width="150" height="80" fill="#fff" stroke="#65a878"/>
+  <text class="label" x="1045" y="252" text-anchor="middle">4. 주장 검증</text><text class="small" x="1045" y="278" text-anchor="middle">인용·참조 확인</text>
+  <rect class="node" x="1140" y="220" width="150" height="80" fill="#fff" stroke="#65a878"/>
+  <text class="label" x="1215" y="252" text-anchor="middle">5. 결과 정리</text><text class="small" x="1215" y="278" text-anchor="middle">계약 확인</text>
+  <rect class="node" x="930" y="360" width="230" height="80" fill="#fff" stroke="#65a878"/>
+  <text class="label" x="1045" y="394" text-anchor="middle">재탐색 조건 판단</text><text class="small" x="1045" y="420" text-anchor="middle">필요 시 검색으로 복귀</text>
+  <rect class="node" x="850" y="490" width="260" height="72" fill="#fff" stroke="#65a878"/>
+  <text class="label" x="980" y="520" text-anchor="middle">일반 대화·요약 응답</text><text class="small" x="980" y="544" text-anchor="middle">검증 흐름과 별도 처리</text>
+  <rect class="node" x="1120" y="490" width="190" height="72" fill="#fff" stroke="#65a878"/>
+  <text class="label" x="1215" y="520" text-anchor="middle">대화 저장 API</text><text class="small" x="1215" y="544" text-anchor="middle">저장 동의 확인</text>
+  <text class="small" x="690" y="595" text-anchor="middle">재탐색은 조건 충족 시 요청당 최대 1회</text>
+
+  <!-- data nodes -->
+  <rect class="node" x="450" y="755" width="200" height="80" fill="#fff" stroke="#d1ad45"/>
+  <text class="label" x="550" y="789" text-anchor="middle">요청 데이터</text><text class="small" x="550" y="815" text-anchor="middle">text · focus · linkUrl · consent</text>
+  <rect class="node" x="690" y="755" width="310" height="80" fill="#fff" stroke="#d1ad45"/>
+  <text class="label" x="845" y="789" text-anchor="middle">FactCheckState</text><text class="small" x="845" y="815" text-anchor="middle">claims · sources · evidence · 진단</text>
+  <rect class="node" x="1040" y="755" width="240" height="80" fill="#fff" stroke="#d1ad45"/>
+  <text class="label" x="1160" y="789" text-anchor="middle">응답 데이터</text><text class="small" x="1160" y="815" text-anchor="middle">result · 판정 · 인용 · 출처</text>
+  <rect class="node" x="1040" y="850" width="240" height="70" fill="#fff" stroke="#d1ad45"/>
+  <text class="label" x="1160" y="880" text-anchor="middle">Render PostgreSQL</text><text class="small" x="1160" y="903" text-anchor="middle">동의한 대화 저장</text>
+
+  <!-- external service nodes -->
+  <rect class="node" x="1420" y="220" width="300" height="100" fill="#fff" stroke="#929eaa"/>
+  <text class="label" x="1570" y="260" text-anchor="middle">출처 검색</text><text class="small" x="1570" y="290" text-anchor="middle">Tavily · LLM 웹 검색</text>
+  <rect class="node" x="1420" y="380" width="300" height="100" fill="#fff" stroke="#929eaa"/>
+  <text class="label" x="1570" y="420" text-anchor="middle">원문 자료</text><text class="small" x="1570" y="450" text-anchor="middle">웹 페이지 · YouTube 자막</text>
+  <rect class="node" x="1420" y="540" width="300" height="130" fill="#fff" stroke="#929eaa"/>
+  <text class="label" x="1570" y="580" text-anchor="middle">판정 모델·도구</text><text class="small" x="1570" y="610" text-anchor="middle">DeepSeek · OpenAI · Gemini</text><text class="small" x="1570" y="640" text-anchor="middle">TypeSafe JEV</text>
+  <text class="small" x="52" y="1022">색상 구분: 파랑 Frontend · 초록 Backend · 노랑 Data · 회색 외부 서비스</text>
+</svg>
