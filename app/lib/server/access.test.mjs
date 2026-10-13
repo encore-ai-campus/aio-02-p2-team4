@@ -82,3 +82,24 @@ test('missing configuration blocks login and unset local development stays avail
   process.env.NODE_ENV='development';
   assert.equal(requireSiteAccess(new Request('http://localhost:3000/api/intent')),null);
 }));
+
+test('a four-digit access password permits login and rejects a different input',async()=>configured(async()=>{
+  process.env.FACTLENS_ACCESS_PASSWORD='4826';
+  const response=await login(request('4826'));
+  assert.equal(response.status,303);
+  assert.equal(response.headers.get('location'),'/');
+  const token=response.headers.get('set-cookie').split(';')[0].slice(ACCESS_COOKIE.length+1);
+  assert.equal(verifyAccessToken(token),true);
+  const denied=await login(request('4827'));
+  assert.equal(denied.headers.get('location'),'/access?error=invalid');
+  assert.equal(denied.headers.get('set-cookie'),null);
+}));
+
+test('passwords outside four to 256 characters keep the site closed',async()=>configured(async()=>{
+  for(const value of ['482','x'.repeat(257)]) {
+    process.env.FACTLENS_ACCESS_PASSWORD=value;
+    const response=await login(request(value));
+    assert.equal(response.status,503);
+    assert.equal((await response.json()).code,'ACCESS_NOT_CONFIGURED');
+  }
+}));

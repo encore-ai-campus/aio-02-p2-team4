@@ -8,7 +8,7 @@ export function accessEnabled() {
 }
 export function accessConfigured() {
   const password=process.env.FACTLENS_ACCESS_PASSWORD ?? '';
-  return password.length >= 12 && password.length <= 256 && (process.env.FACTLENS_BACKEND_SECRET?.length ?? 0) >= 32;
+  return password.length >= 4 && password.length <= 256 && (process.env.FACTLENS_BACKEND_SECRET?.length ?? 0) >= 32;
 }
 function signingKey() {
   return createHmac('sha256',process.env.FACTLENS_BACKEND_SECRET!)
