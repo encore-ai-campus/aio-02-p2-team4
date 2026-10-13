@@ -1,6 +1,16 @@
-import type {FactSource} from './fact-check-contract';
+import type {FactSource, ProgressSource} from './fact-check-contract';
 
 const YOUTUBE_PUBLISHED_AT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+
+export function sourceAccessLabel(source: Pick<ProgressSource, 'sourceType' | 'accessStatus' | 'youtubeDataStatus'>): string {
+  if (source.accessStatus === 'candidate') return '검색 후보';
+  if (source.sourceType !== '유튜브') return source.accessStatus === 'verified' ? '원문 확인' : '접근 불가';
+  const captions = source.accessStatus === 'verified' ? '자막 확인' : '자막 미확인';
+  const data = source.youtubeDataStatus === 'collected' ? '정보·댓글 수집 완료'
+    : source.youtubeDataStatus === 'not_configured' ? '유튜브 API 미설정'
+    : source.youtubeDataStatus === 'unavailable' ? '정보·댓글 조회 실패' : '';
+  return data ? `${data} · ${captions}` : captions;
+}
 
 export function formatYoutubePublishedAt(value: string | null): string | null {
   if (typeof value !== 'string' || value.length > 50 || !YOUTUBE_PUBLISHED_AT.test(value)) return null;

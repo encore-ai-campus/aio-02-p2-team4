@@ -2,6 +2,7 @@
 import asyncio
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
+from functools import partial
 import logging
 import os
 import re
@@ -24,6 +25,7 @@ from extraction import extract_claims, extract_image_claims, extract_page_claims
 from jev import JevError
 from schemas import ModelPreference
 from tavily_search import TavilyUnavailable, search_tavily
+from tavily_extract import extract_public_texts
 from providers import ProviderCallError, Reasoning, providers_for_preference, run_with_fallback
 from recovery import review_recovery
 from schemas import FactCheckRequest
@@ -222,8 +224,15 @@ def make_runtime_adapters(settings: Settings) -> RuntimeAdapters:
         async def fetch_page():
             try:
                 page_text, _ = await fetch_public_text(link_url)
-            except Exception:
-                return ""
+            except Exception as exc:
+                if str(exc) == 'UNSAFE_SOURCE' or state.get('consent') is not True:
+                    return ""
+                async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
+                    recovered = await extract_public_texts(
+                        [link_url], api_key=settings.tavily_api_key.get_secret_value(), client=client,
+                    )
+                result = recovered.get(link_url)
+                return result.text if result is not None else ""
             return page_text if isinstance(page_text, str) else ""
 
         async def fetch_youtube_transcript():
@@ -392,16 +401,16 @@ def make_runtime_adapters(settings: Settings) -> RuntimeAdapters:
                 except (TavilyUnavailable, ValueError) as exc:
                     _logger.warning("link-title search unavailable reason=%s", type(exc).__name__)
         youtube_key = settings.youtube_api_key.get_secret_value()
-        if not youtube_key or not any(
-            source.get("sourceType") == "유튜브" for source in sources if isinstance(source, dict)
-        ):
-            read_result = await read_sources(read_state, reader=cached_reader)
-        else:
-            async with httpx.AsyncClient(timeout=8.0, trust_env=False) as client:
-                async def youtube_reader(url):
-                    return await fetch_youtube_data(url, api_key=youtube_key, client=client)
+        tavily_key = settings.tavily_api_key.get_secret_value()
+        async with httpx.AsyncClient(timeout=8.0, trust_env=False) as client:
+            async def youtube_reader(url):
+                return await fetch_youtube_data(url, api_key=youtube_key, client=client)
 
-                read_result = await read_sources(read_state, reader=cached_reader, youtube_reader=youtube_reader)
+            extractor = partial(extract_public_texts, api_key=tavily_key, client=client) if tavily_key and state.get('consent') is True else None
+            read_result = await read_sources(
+                read_state, reader=cached_reader,
+                youtube_reader=youtube_reader if youtube_key else None, extractor=extractor,
+            )
         read_result["sources"] = apply_shared_origin_groups(
             read_result.get("sources", []), read_result.get("sourceTexts", {}),
         )
@@ -671,8 +680,10 @@ async def run_jev_fast_check(
 
     search_notice = None
     read_result = None
+    tavily_key = settings.tavily_api_key.get_secret_value()
+    extractor = partial(extract_public_texts, api_key=tavily_key, client=client) if tavily_key.strip() and consent else None
     if consent and link_url and sources:
-        link_read = await read_sources({"sources": sources}, reader=fetch_public_text)
+        link_read = await read_sources({"sources": sources}, reader=fetch_public_text, extractor=extractor)
         if link_read.get("sourceTexts"):
             read_result = link_read
     if read_result is None:
@@ -724,9 +735,9 @@ async def run_jev_fast_check(
             async def youtube_reader(url):
                 return await fetch_youtube_data(url, api_key=youtube_key, client=client)
 
-            read_result = await read_sources(state, reader=fetch_public_text, youtube_reader=youtube_reader)
+            read_result = await read_sources(state, reader=fetch_public_text, youtube_reader=youtube_reader, extractor=extractor)
         else:
-            read_result = await read_sources(state, reader=fetch_public_text)
+            read_result = await read_sources(state, reader=fetch_public_text, extractor=extractor)
     state.update(read_result)
     try:
         judgment_result = await verify_claims_jev(
@@ -810,8 +821,9 @@ def build_progress_sources(state: FactCheckState) -> list[dict[str, object]]:
             "publisher": str(raw.get("publisher") or parsed_url.hostname)[:300],
             "accessStatus": status,
             "sourceType": str(raw.get("sourceType") or "유형 미확인")[:100],
+            "youtubeDataStatus": raw.get('youtubeDataStatus', 'not_applicable'),
         })
-        projected.append(source.model_dump(mode="json"))
+        projected.append(source.model_dump(mode="json", exclude_defaults=True))
         seen_ids.add(source_id)
         if len(projected) == 6:
             break

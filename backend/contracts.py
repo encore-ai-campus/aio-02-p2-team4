@@ -66,6 +66,7 @@ class FactCheckProgressSource(_ContractModel):
     publisher: str = Field(min_length=1, max_length=300)
     accessStatus: Literal["candidate", "verified", "unavailable"]
     sourceType: str = Field(min_length=1, max_length=100)
+    youtubeDataStatus: Literal['not_applicable', 'not_configured', 'collected', 'unavailable'] = 'not_applicable'
 
 
 class FactCheckProgressCitation(_ContractModel):

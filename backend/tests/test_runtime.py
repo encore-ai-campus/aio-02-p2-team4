@@ -267,3 +267,29 @@ def test_verify_uses_high_reasoning_and_bounded_provider_timeout(monkeypatch):
 
     assert captured == {"reasoning": "high", "timeout_seconds": 45}
     assert update["llmReasoning"] == "high"
+
+
+def test_runtime_recovers_failed_web_sources_with_configured_tavily(monkeypatch):
+    import json
+    import runtime
+    import tavily_extract
+
+    async def reader(url):
+        raise ValueError('SOURCE_UNAVAILABLE')
+
+    async def resolve(self, host, port=0, family=0):
+        return [{'host': '8.8.8.8'}]
+
+    def handler(request):
+        assert request.url.path == '/extract'
+        assert json.loads(request.content)['urls'] == ['https://example.org/article']
+        return httpx.Response(200, json={'results': [{'url': 'https://example.org/article', 'raw_content': 'Retrieved full article.'}], 'failed_results': []})
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(runtime, 'fetch_public_text', reader)
+    monkeypatch.setattr(tavily_extract.PublicResolver, 'resolve', resolve)
+    monkeypatch.setattr(runtime.httpx, 'AsyncClient', lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs))
+    adapters = runtime.make_runtime_adapters(runtime.Settings(api_key=SecretStr(''), tavily_api_key=SecretStr('tvly-test')))
+    state = asyncio.run(adapters.read({'consent': True, 'sources': [{'id': 's1', 'url': 'https://example.org/article'}]}))
+    assert state['sourceTexts'] == {'s1': 'Retrieved full article.'}
+    assert state['sources'][0]['accessStatus'] == 'verified'

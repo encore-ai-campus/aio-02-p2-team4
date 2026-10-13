@@ -179,6 +179,14 @@ test('accepts older backends that omit optional YouTube keys', async () => {
   assert.equal(actual.sources[0].id,'s1');
   assert.equal(actual.answer.status,'grounded');
 });
+
+test('rejects invalid YouTube collection status in progress sources', async () => {
+ const source={id:'s1',url:'https://www.youtube.com/watch?v=aB_12345678',title:'영상',publisher:'youtube.com',sourceType:'유튜브',accessStatus:'unavailable',youtubeDataStatus:'unknown'};
+ await assert.rejects(readFactCheckStream(response([
+  JSON.stringify({type:'sources',phase:'read',sources:[source]}),
+  JSON.stringify({type:'result',result}),
+ ].join('\n'))),/진행 출처/);
+});
 test('surfaces structured HTTP and streamed errors; rejects malformed and incomplete streams', async () => {
  await assert.rejects(readFactCheckStream(new Response(JSON.stringify({code:'CONFIG_MISSING',message:'키 설정 필요'}),{status:503})), /키 설정 필요/);
  await assert.rejects(readFactCheckStream(response(JSON.stringify({type:'error',code:'UPSTREAM',message:'모델 접근 실패'}))), /모델 접근 실패/);

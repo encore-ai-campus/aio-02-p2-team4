@@ -536,7 +536,7 @@ def _generic_title(title, raw_url):
 
 
 async def _read_candidate(source, *, reader, youtube_reader, browser_fallback):
-    """Read one candidate. Returns (item, text, sections); item None drops it."""
+    """Read one candidate and mark safe web failures eligible for extraction."""
     item = {
         **source,
         'accessStatus':'unavailable',
@@ -551,7 +551,7 @@ async def _read_candidate(source, *, reader, youtube_reader, browser_fallback):
     inline_text = source.get('inlineText')
     if isinstance(inline_text, str) and inline_text.strip():
         item.update(accessStatus='verified', resolvedUrl=source['url'])
-        return item, inline_text, None
+        return item, inline_text, None, False
     if source.get('sourceType') == '유튜브':
         item['youtubeDataStatus'] = 'not_configured' if youtube_reader is None else 'unavailable'
         if youtube_reader is not None:
@@ -586,7 +586,7 @@ async def _read_candidate(source, *, reader, youtube_reader, browser_fallback):
                     item['youtubeTranscript'] = True
                     item['youtubeDataStatus'] = 'collected'
                     item.update(accessStatus='verified', resolvedUrl=source['url'])
-                    return item, transcript, None
+                    return item, transcript, None, False
                 if status in {'collected', 'unavailable', 'not_configured'}:
                     item['youtubeDataStatus'] = status
             except Exception:
@@ -599,8 +599,8 @@ async def _read_candidate(source, *, reader, youtube_reader, browser_fallback):
             and int(item['youtubeViewCount']) <= MIN_YOUTUBE_VIEWS
         ):
             # Low-reach videos are excluded from results entirely.
-            return None, None, None
-        return item, None, None
+            return None, None, None, False
+        return item, None, None, False
     try:
         try:
             result = await reader(source['url'])
@@ -616,16 +616,16 @@ async def _read_candidate(source, *, reader, youtube_reader, browser_fallback):
         if not text.strip():
             raise ValueError('SOURCE_EMPTY')
         if _is_japanese_page_text(text):
-            return None, None, None
+            return None, None, None, False
         if page_title and _generic_title(item.get('title'), source['url']):
             item['title'] = page_title
         item.update(accessStatus='verified', resolvedUrl=final_url)
-        return item, text, sections if isinstance(sections, list) and sections else None
-    except (ValueError, OSError, aiohttp.ClientError, TimeoutError):
-        return item, None, None
+        return item, text, sections if isinstance(sections, list) and sections else None, False
+    except (ValueError, OSError, aiohttp.ClientError, TimeoutError) as exc:
+        return item, None, None, str(exc) != 'UNSAFE_SOURCE'
 
 
-async def read_sources(state, *, reader=fetch_public_text, youtube_reader=None):
+async def read_sources(state, *, reader=fetch_public_text, youtube_reader=None, extractor=None):
     candidates = state['sources'][:6]
     semaphore = asyncio.Semaphore(_MAX_CONCURRENT_READS)
     browser_fallback_used = False
@@ -651,10 +651,25 @@ async def read_sources(state, *, reader=fetch_public_text, youtube_reader=None):
     # Concurrent reads cut wall time from the sum to roughly the slowest
     # source; gather preserves candidate order for ranking.
     results = await asyncio.gather(*(bounded(source) for source in candidates))
+    retry_urls = list(dict.fromkeys(
+        source['url'] for source, (_, _, _, retry) in zip(candidates, results) if retry
+    ))
+    extracted = {}
+    if extractor is not None and retry_urls:
+        try:
+            extracted = await extractor(retry_urls)
+        except (ValueError, OSError, aiohttp.ClientError, TimeoutError):
+            pass
     sources, texts, source_sections = [], {}, {}
-    for source, (item, text, sections) in zip(candidates, results):
+    for source, (item, text, sections, _) in zip(candidates, results):
         if item is None:
             continue
+        recovered = extracted.get(source['url'])
+        if text is None and isinstance(recovered, SourceReadResult) and recovered.text.strip():
+            if _is_japanese_page_text(recovered.text):
+                continue
+            item.update(accessStatus='verified', resolvedUrl=recovered.url)
+            text, sections = recovered.text, recovered.sections
         sources.append(item)
         if text is not None:
             texts[source['id']] = text

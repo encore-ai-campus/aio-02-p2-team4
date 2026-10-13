@@ -119,7 +119,7 @@ def test_read_prepends_link_seed_without_network(monkeypatch):
     import runtime
     from runtime import Settings, make_runtime_adapters
 
-    async def fake_read(state, reader=None, youtube_reader=None):
+    async def fake_read(state, reader=None, youtube_reader=None, extractor=None):
         return {"sources": state["sources"], "sourceTexts": {}, "sourceSections": {}}
 
     monkeypatch.setattr(runtime, "read_sources", fake_read)
@@ -155,7 +155,7 @@ def test_read_searches_related_coverage_from_the_linked_page_title(monkeypatch):
     def mock_async_client(**kwargs):
         return real_async_client(transport=httpx.MockTransport(handler), **kwargs)
 
-    async def fake_read(state, reader=None, youtube_reader=None):
+    async def fake_read(state, reader=None, youtube_reader=None, extractor=None):
         assert reader is not None
         texts = {}
         for source in state["sources"]:

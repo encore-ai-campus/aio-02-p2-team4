@@ -242,3 +242,17 @@ def test_progress_preview_dedupes_citations_by_source():
         "llmModel": "gpt-6-luna", "llmReasoning": "max",
     })
     assert preview["claims"][0]["citations"] == [{"sourceId": "s1", "quote": quote_one}]
+
+
+def test_progress_sources_expose_youtube_collection_status_without_comment_bodies():
+    from runtime import build_progress_sources
+
+    sources = build_progress_sources({'sources': [{
+        'id': 's1', 'url': 'https://www.youtube.com/watch?v=aB_12345678',
+        'title': '영상', 'publisher': 'youtube.com', 'sourceType': '유튜브',
+        'accessStatus': 'unavailable', 'youtubeDataStatus': 'collected',
+        'youtubeComments': ['PRIVATE_COMMENT_BODY'],
+    }]})
+    assert sources[0]['youtubeDataStatus'] == 'collected'
+    assert sources[0]['accessStatus'] == 'unavailable'
+    assert 'PRIVATE_COMMENT_BODY' not in json.dumps(sources)

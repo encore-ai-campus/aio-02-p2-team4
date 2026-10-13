@@ -303,3 +303,74 @@ def test_youtube_without_api_reader_is_marked_not_configured():
     assert state['sources'][0]['youtubeDataStatus'] == 'not_configured'
     assert state['sources'][0]['youtubeComments'] == []
     assert state['sourceTexts'] == {}
+
+
+def test_failed_web_sources_are_extracted_once_as_a_batch(monkeypatch):
+    async def reader(url):
+        if url.endswith('/good'):
+            return 'Direct article', url
+        if url.endswith('/empty'):
+            raise sources._BrowserFallbackEligible(url)
+        raise ValueError('SOURCE_UNAVAILABLE')
+
+    async def browser(url):
+        raise ValueError('SOURCE_UNAVAILABLE')
+
+    monkeypatch.setattr(sources, '_fetch_browser_text', browser)
+    batches = []
+
+    async def extractor(urls):
+        batches.append(urls)
+        return {url: sources.SourceReadResult('Extracted article ' + url.rsplit('/', 1)[1], url) for url in urls}
+
+    candidates = [{'id': name, 'url': 'https://example.org/' + name} for name in ['good', 'denied', 'empty']]
+    state = asyncio.run(sources.read_sources({'sources': candidates}, reader=reader, extractor=extractor))
+
+    assert batches == [['https://example.org/denied', 'https://example.org/empty']]
+    assert [item['accessStatus'] for item in state['sources']] == ['verified'] * 3
+    assert state['sourceTexts'] == {'good': 'Direct article', 'denied': 'Extracted article denied', 'empty': 'Extracted article empty'}
+
+
+def test_extractor_never_receives_unsafe_or_youtube_sources():
+    async def reader(url):
+        raise ValueError('UNSAFE_SOURCE')
+
+    async def extractor(urls):
+        pytest.fail('Unsafe and YouTube sources must not reach the extraction service')
+
+    state = asyncio.run(sources.read_sources({'sources': [
+        {'id': 'unsafe', 'url': 'http://127.0.0.1/private'},
+        {'id': 'video', 'url': 'https://www.youtube.com/watch?v=aB_12345678', 'sourceType': '유튜브'},
+    ]}, reader=reader, extractor=extractor))
+    assert state['sourceTexts'] == {}
+    assert all(item['accessStatus'] == 'unavailable' for item in state['sources'])
+
+
+def test_partial_extraction_keeps_failed_sources_unavailable():
+    async def reader(url):
+        raise ValueError('SOURCE_UNAVAILABLE')
+
+    async def extractor(urls):
+        return {'https://example.org/a': sources.SourceReadResult('Retrieved article', 'https://example.org/a')}
+
+    state = asyncio.run(sources.read_sources({'sources': [
+        {'id': 's1', 'url': 'https://example.org/a'}, {'id': 's2', 'url': 'https://example.org/b'},
+    ]}, reader=reader, extractor=extractor))
+    assert [item['accessStatus'] for item in state['sources']] == ['verified', 'unavailable']
+    assert state['sourceTexts'] == {'s1': 'Retrieved article'}
+
+
+def test_extraction_failure_preserves_direct_source_text():
+    async def reader(url):
+        if url.endswith('/good'):
+            return 'Direct article', url
+        raise ValueError('SOURCE_UNAVAILABLE')
+
+    async def extractor(urls):
+        raise TimeoutError()
+
+    state = asyncio.run(sources.read_sources({'sources': [
+        {'id': 's1', 'url': 'https://example.org/good'}, {'id': 's2', 'url': 'https://example.org/bad'},
+    ]}, reader=reader, extractor=extractor))
+    assert state['sourceTexts'] == {'s1': 'Direct article'}
+    assert state['sources'][1]['accessStatus'] == 'unavailable'

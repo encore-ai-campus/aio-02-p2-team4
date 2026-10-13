@@ -84,6 +84,7 @@ export type ContentSummary = {
 export type ProgressSource = {
   id: string; url: string; title: string; publisher: string;
   accessStatus: 'candidate' | 'verified' | 'unavailable'; sourceType: string;
+  youtubeDataStatus?: YouTubeDataStatus;
 };
 export type ProgressCitation = {sourceId: string; quote: string};
 export type ProgressClaim = {

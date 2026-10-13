@@ -139,6 +139,7 @@ function validProgressSource(value: unknown): value is ProgressSource {
     && typeof source.title === 'string' && source.title.length >= 1 && source.title.length <= 300
     && typeof source.publisher === 'string' && source.publisher.length >= 1 && source.publisher.length <= 300
     && ['candidate','verified','unavailable'].includes(String(source.accessStatus))
+    && (source.youtubeDataStatus === undefined || (typeof source.youtubeDataStatus === 'string' && ['not_applicable','not_configured','collected','unavailable'].includes(source.youtubeDataStatus)))
     && typeof source.sourceType === 'string' && source.sourceType.length >= 1 && source.sourceType.length <= 100;
 }
 function validProgressSources(value: unknown): value is ProgressSource[] {
