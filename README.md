@@ -1,10 +1,16 @@
-# 🔍 True or Not (팩트검증 에이전트)
+<div align="center">
+  <img src="public/logo.png" alt="True or Not Banner" width="100%" style="border-radius: 12px; max-width: 800px;" />
 
-> **"근거 없는 단정 대신, 투명한 출처와 원문으로 판단을 돕습니다."**  
-> True or Not은 뉴스·SNS·유튜브·댓글 속 주장을 분해하고, 공신력 있는 원문 근거와 대조하여 진위 여부를 다각도로 검증해 주는 **생활형 팩트체크 AI 서비스**입니다.
+  # 🔍 True or Not (팩트검증 에이전트)
 
-[![Live Demo](https://img.shields.io/badge/Demo-웹서비스_체험하기-blue?style=for-the-badge&logo=vercel)](https://true-or-not-ten.vercel.app/)
-[![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-black?style=for-the-badge&logo=github)](https://github.com/teach97/TRUE-OR-NOT)
+  <p><em>"근거 없는 단정 대신, 투명한 출처와 원문으로 판단을 돕습니다."</em></p>
+  <p>True or Not은 뉴스·SNS·유튜브·댓글 속 주장을 분해하고, 공신력 있는 원문 근거와 대조하여 진위 여부를 다각도로 검증해 주는 <strong>생활형 팩트체크 AI 서비스</strong>입니다.</p>
+
+  <p>
+    <a href="https://true-or-not-ten.vercel.app/"><img src="https://img.shields.io/badge/Demo-웹서비스_체험하기-blue?style=for-the-badge&logo=vercel" alt="Live Demo" /></a>
+    <a href="https://github.com/teach97/TRUE-OR-NOT"><img src="https://img.shields.io/badge/GitHub-Repository-black?style=for-the-badge&logo=github" alt="GitHub Repo" /></a>
+  </p>
+</div>
 
 ---
 
