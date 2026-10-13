@@ -1049,6 +1049,11 @@ export default function FactCheckDashboard() {
     void storage.deleteConversation(id);
   }
 
+  function deleteAllConversations() {
+    reset();
+    void storage.deleteAllConversations();
+  }
+
   function download() {
     if (!snapshot) return;
     const exportResult = liveResult ? {...liveResult, sources: stripYoutubeApiDataForExport(liveResult.sources)} : liveResult;
@@ -1083,14 +1088,14 @@ export default function FactCheckDashboard() {
           if (index === 1) document.getElementById('review')?.scrollIntoView({behavior: reduce ? 'auto' : 'smooth', block: 'start'});
         }}
       />
-      <ConversationHistory storage={storage} onNew={reset} onSelect={id=>void selectConversation(id)} onDelete={deleteConversation}/>
+      <ConversationHistory storage={storage} onNew={reset} onSelect={id=>void selectConversation(id)} onDelete={deleteConversation} onDeleteAll={deleteAllConversations}/>
       <div className="sidebar-bottom"><div className="local-status"><span/>{serviceLabel}</div><p className="sidebar-foot">TRUE OR NOT / EVIDENCE WORKSPACE</p></div>
     </aside>
     <div className="main-shell">
       <header className="topbar"><div className="breadcrumb"><span className="mobile-brand"><img src="/true-or-not-logo-04.png" alt="" width={26} height={15}/>True or Not</span><strong></strong></div><div className="topbar-actions"><button className="text-button" aria-label="사용 가이드" onClick={() => setDialog('guide')}><Icon name="book"/><span>사용 가이드</span></button><span className="profile-mark" aria-label="로컬 워크스페이스">F</span></div></header>
       <main id="workspace-main" className="page-content">
         <section className="composer panel-host chat-hero" aria-labelledby="chat-heading">
-          <details className="conversation-mobile"><summary>대화 기록</summary><ConversationHistory storage={storage} onNew={reset} onSelect={id=>void selectConversation(id)} onDelete={deleteConversation}/></details>
+          <details className="conversation-mobile"><summary>대화 기록</summary><ConversationHistory storage={storage} onNew={reset} onSelect={id=>void selectConversation(id)} onDelete={deleteConversation} onDeleteAll={deleteAllConversations}/></details>
           <div className="chat-intro chat-intro--wordmark">
             <h1 id="chat-heading" className="sr-only">True or Not</h1>
             <TechText

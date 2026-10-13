@@ -6,6 +6,7 @@ type Client = {
   list:(cursor?:string|null,signal?:AbortSignal)=>Promise<ConversationPage>;
   get:(id:string,before?:number|null,signal?:AbortSignal)=>Promise<MessagePage>;
   delete:(id:string,signal?:AbortSignal)=>Promise<void>;
+  deleteAll:(signal?:AbortSignal)=>Promise<number>;
 };
 export class ConversationStorage {
   consent=false;epoch=0;active:string|null=null;items:Conversation[]=[];nextCursor:string|null=null;beforeSequence:number|null=null;loading=false;
@@ -60,6 +61,11 @@ export class ConversationStorage {
   async deleteConversation(id:string){
     if(this.active===id)this.newConversation();else this.invalidate();const epoch=this.epoch;
     try {await this.client.delete(id,this.controller.signal);if(epoch===this.epoch){await this.refresh();if(this.consent&&this.pending.length&&!this.error)await this.flush();}}
+    catch(error){if(epoch===this.epoch){this.error=error instanceof Error?error.message:'STORAGE_UNAVAILABLE';this.changed();}}
+  }
+  async deleteAllConversations(){
+    this.newConversation();const epoch=this.epoch;
+    try {await this.client.deleteAll(this.controller.signal);if(epoch===this.epoch)await this.refresh();}
     catch(error){if(epoch===this.epoch){this.error=error instanceof Error?error.message:'STORAGE_UNAVAILABLE';this.changed();}}
   }
   async newSession(){this.newConversation();this.items=[];try{await this.client.session(true,this.controller.signal);await this.refresh();}catch{this.error='STORAGE_UNAVAILABLE';this.changed();}}

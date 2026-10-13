@@ -5,6 +5,13 @@ test('rejects malformed history instead of rendering arbitrary response fields',
   const original=global.fetch;global.fetch=async()=>Response.json({items:[{ownerId:'private'}],nextCursor:null});
   try {await assert.rejects(()=>conversationClient.list(),/PROTOCOL/);}finally{global.fetch=original;}
 });
+test('deleteAll returns the removed count and rejects malformed counts',async()=>{
+  const original=global.fetch;
+  global.fetch=async()=>Response.json({deleted:3});
+  try {assert.equal(await conversationClient.deleteAll(),3);}finally{global.fetch=original;}
+  global.fetch=async()=>Response.json({deleted:-1});
+  try {await assert.rejects(()=>conversationClient.deleteAll(),/PROTOCOL/);}finally{global.fetch=original;}
+});
 
 for (const operation of ['append','get']) {
   test(`${operation} accepts persisted answers containing YouTube sources`,async()=>{
