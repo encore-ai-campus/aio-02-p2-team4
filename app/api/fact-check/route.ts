@@ -1,6 +1,8 @@
 // @ts-ignore -- Node native TypeScript tests require explicit extensions.
 import { limitedText, validateRequest } from '../../lib/server/agent.ts';
 import type { FactCheckRequest } from '../../lib/fact-check-contract';
+// @ts-ignore -- Node native TypeScript tests require explicit extensions.
+import { requireSiteAccess } from '../../lib/server/access.ts';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,7 +29,8 @@ function backendHeaders(extra: Record<string,string> = {}) {
 function error(status: number, code: string, message: string) {
   return Response.json({code,message},{status,headers});
 }
-export async function GET() {
+export async function GET(req: Request) {
+  const denied=requireSiteAccess(req);if(denied)return denied;
   try {
     const signal=AbortSignal.timeout(5000);
     const response=await fetch(backend('/api/fact-check'),{signal,cache:'no-store',redirect:'error',headers:backendHeaders()});
@@ -46,6 +49,7 @@ export async function GET() {
   }catch{return error(503,'BACKEND_UNAVAILABLE','검증 백엔드에 연결할 수 없습니다.');}
 }
 export async function POST(req: Request) {
+  const denied=requireSiteAccess(req);if(denied)return denied;
   const url=new URL(req.url);
   // Local development only; these checks do not replace deployment authentication.
   // Headers are not authentication: run the development server on loopback only.

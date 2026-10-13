@@ -1,4 +1,5 @@
 // @ts-ignore -- Node native TypeScript tests require explicit extensions.
+import { requireSiteAccess } from '../../lib/server/access.ts';
 function backend(path: string) {
   const base = new URL(process.env.FACTLENS_BACKEND_URL || 'http://127.0.0.1:8010');
   if (process.env.FACTLENS_ALLOW_REMOTE_BACKEND === '1') {
@@ -14,6 +15,7 @@ function error(status: number, code: string, message: string) {
   return Response.json({code,message},{status,headers:{'Cache-Control':'no-store'}});
 }
 export async function POST(req: Request) {
+  const denied=requireSiteAccess(req);if(denied)return denied;
   const url=new URL(req.url);
   const forwardedFor = req.headers.get('x-forwarded-for');
   const unsafeForwarding = forwardedFor !== null && !['127.0.0.1','::1','::ffff:127.0.0.1'].includes(forwardedFor);
