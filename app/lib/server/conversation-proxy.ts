@@ -1,3 +1,5 @@
+// @ts-ignore -- Node native TypeScript tests require explicit extensions.
+import { requireSiteAccess } from './access.ts';
 const LIMIT = 524288;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const codes:Record<string,number> = {NOT_CONFIGURED:503,STORAGE_UNAVAILABLE:503,SESSION_REQUIRED:401,SESSION_INVALID:401,NOT_FOUND:404,IDEMPOTENCY_CONFLICT:409,INVALID_REQUEST:422,BODY_TOO_LARGE:413};
@@ -23,6 +25,7 @@ function backend(path:string) {
   return new URL(path,base);
 }
 export async function handleConversationRequest(req:Request,path:string[]):Promise<Response> {
+  const denied=requireSiteAccess(req);if(denied)return denied;
   const url=new URL(req.url);const method=req.method;
   let authority:URL;
   try{authority=new URL(`${url.protocol}//${req.headers.get('host')??url.host}`);}catch{return error('FORBIDDEN',403);}

@@ -45,23 +45,25 @@ test('local Host does not relax same-origin or hostile forwarding restrictions',
 
 test('public deploy flag lifts the local-only guard and forwards the backend secret',async()=>{
   const {POST}=await import('../../api/fact-check/route.ts');
-  const savedEnv={node:process.env.NODE_ENV,deploy:process.env.FACTLENS_PUBLIC_DEPLOY,secret:process.env.FACTLENS_BACKEND_SECRET,backend:process.env.FACTLENS_BACKEND_URL,remote:process.env.FACTLENS_ALLOW_REMOTE_BACKEND};
+  const {issueAccessToken}=await import('./access.ts');
+  const savedEnv={node:process.env.NODE_ENV,deploy:process.env.FACTLENS_PUBLIC_DEPLOY,secret:process.env.FACTLENS_BACKEND_SECRET,backend:process.env.FACTLENS_BACKEND_URL,remote:process.env.FACTLENS_ALLOW_REMOTE_BACKEND,password:process.env.FACTLENS_ACCESS_PASSWORD};
   const savedFetch=globalThis.fetch;
   const seen={url:null,headers:null};
   globalThis.fetch=async(url,options)=>{seen.url=String(url);seen.headers=options?.headers;return {ok:false,status:500,body:{cancel(){}}}};
   try {
     process.env.NODE_ENV='production';
     process.env.FACTLENS_PUBLIC_DEPLOY='1';
-    process.env.FACTLENS_BACKEND_SECRET='test-secret';
+    process.env.FACTLENS_BACKEND_SECRET='test signing secret for isolated tests only';
+    process.env.FACTLENS_ACCESS_PASSWORD='test access password only';
     process.env.FACTLENS_BACKEND_URL='https://backend.example.test';
     process.env.FACTLENS_ALLOW_REMOTE_BACKEND='1';
-    const response=await POST(make({...input},{host:'app.example.test',origin:'https://app.example.test'}));
+    const response=await POST(make({...input},{host:'app.example.test',origin:'https://app.example.test',cookie:'ton_access='+issueAccessToken()}));
     assert.equal(response.status,502);
     assert.ok(String(seen.url).startsWith('https://backend.example.test/api/fact-check/stream'));
-    assert.equal(seen.headers['x-factlens-secret'],'test-secret');
+    assert.equal(seen.headers['x-factlens-secret'],'test signing secret for isolated tests only');
   } finally {
     process.env.NODE_ENV=savedEnv.node;globalThis.fetch=savedFetch;
-    for(const [key,value] of [['FACTLENS_PUBLIC_DEPLOY',savedEnv.deploy],['FACTLENS_BACKEND_SECRET',savedEnv.secret],['FACTLENS_BACKEND_URL',savedEnv.backend],['FACTLENS_ALLOW_REMOTE_BACKEND',savedEnv.remote]]) {
+    for(const [key,value] of [['FACTLENS_PUBLIC_DEPLOY',savedEnv.deploy],['FACTLENS_BACKEND_SECRET',savedEnv.secret],['FACTLENS_BACKEND_URL',savedEnv.backend],['FACTLENS_ALLOW_REMOTE_BACKEND',savedEnv.remote],['FACTLENS_ACCESS_PASSWORD',savedEnv.password]]) {
       if(value===undefined)delete process.env[key];else process.env[key]=value;
     }
   }
@@ -69,10 +71,14 @@ test('public deploy flag lifts the local-only guard and forwards the backend sec
 
 test('production remains blocked for both local authorities',async()=>{
  const {POST}=await import('../../api/fact-check/route.ts');const saved=process.env.NODE_ENV;
+ const {issueAccessToken}=await import('./access.ts');
+ const password=process.env.FACTLENS_ACCESS_PASSWORD,secret=process.env.FACTLENS_BACKEND_SECRET;
  try {
   process.env.NODE_ENV='production';
-  for(const host of ['localhost:3000','127.0.0.1:3000'])assert.equal((await POST(make({...input,consent:false},{host,origin:`http://${host}`}))).status,403);
- }finally{if(saved===undefined)delete process.env.NODE_ENV;else process.env.NODE_ENV=saved;}
+  process.env.FACTLENS_ACCESS_PASSWORD='test access password only';
+  process.env.FACTLENS_BACKEND_SECRET='test signing secret for isolated tests only';
+  for(const host of ['localhost:3000','127.0.0.1:3000'])assert.equal((await POST(make({...input,consent:false},{host,origin:`http://${host}`,cookie:'ton_access='+issueAccessToken()}))).status,403);
+ }finally{for(const [key,value] of [['NODE_ENV',saved],['FACTLENS_ACCESS_PASSWORD',password],['FACTLENS_BACKEND_SECRET',secret]]){if(value===undefined)delete process.env[key];else process.env[key]=value;}}
 });
 
 test('status uses backend configuration and projects only safe fields',async()=>{
