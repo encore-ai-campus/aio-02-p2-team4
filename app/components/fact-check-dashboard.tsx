@@ -8,6 +8,8 @@ import type { Claim } from './demo-state';
 import { MODEL_OPTIONS } from '../lib/fact-check-contract';
 import type { AgentStage, AnswerBlock, AttachedImage, ContentSummary, FactCheckAnswer, FactClaim, FactEvidence, FactCheckRequest, FactCheckResult, FactSource, ModelOption, ModelPreference, ProgressClaim, ProgressSource } from '../lib/fact-check-contract';
 import { sourceDiscoveryLabel } from '../lib/source-discovery';
+import { elapsedSecondsSince, progressElapsedSeconds } from '../lib/progress-timing';
+import type { ProgressTiming } from '../lib/progress-timing';
 import { scoreBand, scoreLabel, verdictBreakdown } from '../lib/fact-score';
 import { stripYoutubeApiDataForExport } from '../lib/youtube-context';
 import { FactCheckError, faviconUrlFor, readFactCheckStream, safeSourceUrl, validResult } from './fact-check-client';
@@ -112,17 +114,17 @@ function TrustIndex({score, claimCount, sourceCount, evidenceCount, warningCount
   </div>;
 }
 
-type ChatProgress = {
+type ChatProgress = ProgressTiming & {
   status?: string; statusStage?: AgentStage;
   sourcesFound?: ProgressSource[]; sourcesFoundElapsedSeconds?: number;
   sourcesRead?: ProgressSource[]; sourcesReadElapsedSeconds?: number;
-  claims?: ProgressClaim[]; claimsElapsedSeconds?: number; completed?: boolean; error?: string;
+  claims?: ProgressClaim[]; claimsElapsedSeconds?: number;
 };
 type ChatMessage = {id: string; role: 'assistant' | 'user'; text?: string; answer?: FactCheckAnswer; judgments?: FactClaim[]; evidence?: FactEvidence[]; factScore?: number | null; verdict?: string | null; search?: string | null; scoreMode?: 'jev' | 'claims'; scoreEngine?: string | null; sources?: FactSource[]; progress?: ChatProgress; summary?: ContentSummary; meta?: string; tone?: 'normal' | 'error'; imagePreview?: string; thinking?: boolean; storageStatus?: 'cancelled'};
 type ModelSelection = ModelPreference;
 
-function ThinkingLoader({label}: {label: string}) {
-  return <span className="chat-loader-row" role="status" aria-label={label}><LatticeLoader label="요청 처리 중" doneLabel="처리 완료" errorLabel="처리 실패" pattern="orbit" grid={3} shape="round" cellSize={7} gap={3} fontSize={12} step={75} idleOpacity={0.15} glow color="#ffffff" showTimer/><span>{label}</span></span>;
+function ThinkingLoader({label, elapsed}: {label: string; elapsed?: number}) {
+  return <span className="chat-loader-row" role="status" aria-label={label}><LatticeLoader label="요청 처리 중" doneLabel="처리 완료" errorLabel="처리 실패" pattern="orbit" grid={3} shape="round" cellSize={7} gap={3} fontSize={12} step={75} idleOpacity={0.15} glow color="#ffffff" showTimer elapsed={elapsed}/><span>{label}</span></span>;
 }
 
 function SummaryReply({summary}: {summary: ContentSummary}) {
@@ -337,26 +339,24 @@ function VerifyTimeline({progress}: {progress: ChatProgress}) {
 }
 
 function ProgressReply({progress}: {progress: ChatProgress}) {
-  const [stageElapsedSeconds, setStageElapsedSeconds] = useState(0);
+  const [now, setNow] = useState(() => performance.now());
   useEffect(() => {
     if (progress.completed || progress.error) return;
-    const startedAt = performance.now();
-    setStageElapsedSeconds(0);
-    const timer = window.setInterval(() => {
-      setStageElapsedSeconds(Math.floor((performance.now() - startedAt) / 1000));
-    }, 1000);
+    setNow(performance.now());
+    const timer = window.setInterval(() => setNow(performance.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [progress.statusStage, progress.completed, progress.error]);
+  }, [progress.requestStartedAt, progress.completed, progress.error]);
+  const elapsedSeconds = progressElapsedSeconds(progress, now);
   const claims = progress.claims;
   const sources = progress.sourcesRead ?? [];
   const sourceNumbers = new Map(sources.map((source, index) => [source.id, index + 1]));
   const heading = claims !== undefined ? '1차 검증 요약' : '검증 진행 상황';
   return <section className="progress-reply" data-testid="progress-reply" aria-label="검증 진행 결과">
     <div className="progress-reply-heading"><span aria-hidden="true">✦</span><h3><ScrambleText>{heading}</ScrambleText></h3><span className="progress-reply-status">{progress.error ? '중단' : progress.completed ? '완료' : '중간 업데이트'}</span></div>
-    {!progress.completed && !progress.error && <ThinkingLoader label={progress.status ?? '최종 답변을 만드는 중입니다.'}/>}
+    {!progress.completed && !progress.error && <ThinkingLoader label={progress.status ?? '최종 답변을 만드는 중입니다.'} elapsed={elapsedSeconds}/>}
     <VerifyTimeline progress={progress}/>
     {progress.status && <p className="progress-current-stage" data-testid="progress-stage">
-      <span>{progress.status}</span><time>{stageElapsedSeconds}초 경과</time>
+      <span>{progress.status}</span><time>총 {elapsedSeconds.toFixed(1)}초 경과</time>
     </p>}
     {progress.sourcesFound !== undefined && progress.sourcesRead === undefined && <ProgressSourceList title="검색된 출처 후보" sources={progress.sourcesFound} elapsedSeconds={progress.sourcesFoundElapsedSeconds} testId="progress-candidate-source"/>}
     {progress.sourcesRead !== undefined && <ProgressSourceList title="가져온 원문" sources={progress.sourcesRead} elapsedSeconds={progress.sourcesReadElapsedSeconds} testId="progress-read-source"/>}
@@ -376,7 +376,7 @@ function ProgressReply({progress}: {progress: ChatProgress}) {
           })}</ul>}
         </li>)}</ol>
         : <p className="progress-empty">검증 가능한 주장을 찾지 못했습니다. 확인할 원문·링크·이미지를 보내주시면 검증하겠습니다.</p>)}
-        {claims !== undefined && progress.claimsElapsedSeconds !== undefined && <small className="progress-milestone-time">1차 요약 · {progress.claimsElapsedSeconds}초</small>}
+        {claims !== undefined && progress.claimsElapsedSeconds !== undefined && <small className="progress-milestone-time">1차 요약 · 요청 후 {progress.claimsElapsedSeconds.toFixed(1)}초에 완료</small>}
         {progress.error
           ? <p className="progress-error" role="alert">{progress.error}<br/>위 내용은 최종 답변이 아닌 1차 확인 결과입니다.</p>
           : <small className="progress-disclaimer">{progress.completed ? '검증 진행 기록입니다. 최종 답변은 아래에 이어집니다.' : '최종 인용 답변을 만드는 중입니다. 이 1차 요약은 완성된 답변이 아닙니다.'}</small>}
@@ -385,7 +385,7 @@ function ProgressReply({progress}: {progress: ChatProgress}) {
 
         function ProgressSourceList({title, sources, elapsedSeconds, testId}: {title: string; sources: ProgressSource[]; elapsedSeconds?: number; testId: string}) {
         return <div className="progress-source-block" data-testid={`${testId}-group`}>
-        <h4><ScrambleText>{title}</ScrambleText>{elapsedSeconds !== undefined && <span className="progress-milestone-time"> · {elapsedSeconds}초</span>}</h4>
+        <h4><ScrambleText>{title}</ScrambleText>{elapsedSeconds !== undefined && <span className="progress-milestone-time"> · 요청 후 {elapsedSeconds.toFixed(1)}초에 완료</span>}</h4>
         {sources.length > 0
         ? <ul className="progress-source-list">{sources.map((source, index) => {
             const href = safeSourceUrl(source.url);
@@ -561,7 +561,9 @@ export default function FactCheckDashboard() {
     if (request.current) cancelNoticed.current = request.current;
     stop();
     dispatch({type: 'cancel'});
-    setMessages(messages => messages.filter(message => !message.thinking));
+    setMessages(messages => messages.filter(message => !message.thinking).map(message => message.progress && !message.progress.completed && !message.progress.error
+      ? {...message, progress: {...message.progress, statusElapsedSeconds: progressElapsedSeconds(message.progress, performance.now()), error: '검증을 중단했습니다.'}}
+      : message));
     setNotice('요청을 중단했습니다.');
     addMessage({role:'assistant',text:'요청을 중단했습니다.',storageStatus:'cancelled'});
   }
@@ -731,7 +733,7 @@ export default function FactCheckDashboard() {
     setImage(null);
     const current = generation.current;
     const startedAt = performance.now();
-    const elapsedSeconds = () => Math.floor((performance.now() - startedAt) / 1000);
+    const elapsedSeconds = () => elapsedSecondsSince(startedAt, performance.now());
     let progressMessageId: string | null = null;
     const thinkingId = addMessage({role: 'assistant', thinking: true});
     progressMessageId = thinkingId;
@@ -740,7 +742,7 @@ export default function FactCheckDashboard() {
     const updateProgressMessage = (patch: Partial<ChatProgress>) => {
       if (generation.current !== current) return;
       setMessages(messages => messages.map(message => message.id === progressMessageId
-        ? {...message, thinking: false, progress: {...message.progress, ...patch}}
+        ? {...message, thinking: false, progress: {...message.progress, ...patch, requestStartedAt: startedAt, statusElapsedSeconds: elapsedSeconds()}}
         : message));
     };
     let gate: GateDecision | null = null;
@@ -918,7 +920,7 @@ export default function FactCheckDashboard() {
         setMessages(messages => {
           const target = messages.find(item => item.id === progressMessageId);
           if (target?.progress) {
-            return messages.map(item => item.id === progressMessageId ? {...item, progress: {...item.progress, error: message}} : item);
+            return messages.map(item => item.id === progressMessageId ? {...item, progress: {...item.progress, statusElapsedSeconds: elapsedSeconds(), error: message}} : item);
           }
           return [...messages.filter(item => item.id !== progressMessageId), {id: errorId, role: 'assistant', text: message, tone: 'error'}];
         });
