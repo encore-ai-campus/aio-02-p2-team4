@@ -296,7 +296,7 @@ function TruthBreakdown({claims, evidence, sources}: {claims: FactClaim[]; evide
         return <li key={index}>
           {key === 'refuted' && <h4>틀린 부분</h4>}
           <AnswerBlockView block={{text: item.statement + (item.summary ? ` ${item.summary}` : ''), citations: corrected ? [] : citations}} sources={sources} citationState={createAnswerCitationDisplayState(sources)} verifiedEvidence/>
-          {corrected && <><h4>근거상 올바른 내용</h4><AnswerBlockView block={{text: item.confirmed.join(' '), citations}} sources={sources} citationState={createAnswerCitationDisplayState(sources)} verifiedEvidence/></>}
+          {corrected && <><h4 className="truth-breakdown-confirmed-heading">근거상 올바른 내용</h4><AnswerBlockView block={{text: item.confirmed.join(' '), citations}} sources={sources} citationState={createAnswerCitationDisplayState(sources)} verifiedEvidence/></>}
         </li>;
       })}</ul>
     </section>)}
