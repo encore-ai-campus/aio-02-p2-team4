@@ -122,9 +122,20 @@ class FactEvidence(_ContractModel):
         return self
 
 
+class FactClaimPart(_ContractModel):
+    statement: str = Field(min_length=1, max_length=2_000)
+    verdictCode: VerdictCode
+    verdict: str = Field(min_length=1, max_length=100)
+    factScore: int = Field(ge=0, le=100)
+    summary: str = Field(min_length=1, max_length=2_000)
+    confirmed: list[str] = Field(default_factory=list, max_length=5)
+    evidenceIds: list[str] = Field(max_length=2)
+
+
 class FactClaim(_ContractModel):
     id: str = Field(min_length=1, max_length=100)
     quote: str = Field(min_length=1, max_length=12_000)
+    statement: str | None = Field(default=None, min_length=1, max_length=12_000)
     start: int = Field(ge=0)
     end: int = Field(ge=0)
     kind: ClaimKind
@@ -136,9 +147,11 @@ class FactClaim(_ContractModel):
     tone: ClaimTone
     summary: str = Field(min_length=1, max_length=2_000)
     confirmed: list[str] = Field(max_length=5)
+    refuted: list[str] = Field(default_factory=list, max_length=5)
     unresolved: list[str] = Field(max_length=5)
     warnings: list[str] = Field(max_length=5)
     evidenceIds: list[str] = Field(max_length=6)
+    parts: list[FactClaimPart] = Field(default_factory=list, max_length=3)
 
     @model_validator(mode="before")
     @classmethod
@@ -146,6 +159,7 @@ class FactClaim(_ContractModel):
         if not isinstance(value, dict):
             return value
         normalized = dict(value)
+        normalized.setdefault("statement", normalized.get("quote"))
         if "factScore" not in normalized:
             normalized["factScore"] = default_fact_score(str(normalized.get("verdictCode", "")))
         raw_score = normalized.get("factScore")
@@ -160,6 +174,8 @@ class FactClaim(_ContractModel):
             raise ValueError("Claim end offset must not precede start offset")
         if score_band(self.factScore) != self.scoreBand or score_label(self.factScore) != self.scoreLabel:
             raise ValueError("Fact score label does not match score")
+        if len(self.parts) == 1:
+            raise ValueError("Compound claims need at least two parts")
         return self
 
 
@@ -266,6 +282,17 @@ class FactCheckResult(_ContractModel):
                 evidence = evidence_by_id.get(evidence_id)
                 if evidence is None or evidence.claimId != claim.id:
                     raise ValueError("Claim evidence link is inconsistent")
+            part_ids = []
+            for part in claim.parts:
+                part_ids.extend(part.evidenceIds)
+                if any(evidence_id not in claim.evidenceIds for evidence_id in part.evidenceIds):
+                    raise ValueError("Part evidence link is inconsistent")
+                relations = {evidence_by_id[evidence_id].relation for evidence_id in part.evidenceIds}
+                if ((part.verdictCode == "mostly_supported" and ("supports" not in relations or "contradicts" in relations))
+                        or (part.verdictCode == "contradicted" and ("contradicts" not in relations or "supports" in relations))):
+                    raise ValueError("Part verdict is not supported by its evidence")
+            if claim.parts and (len(set(part_ids)) != len(part_ids) or set(part_ids) != set(claim.evidenceIds)):
+                raise ValueError("Part evidence must cover the claim without duplicate links")
 
         linked_ids = {evidence_id for claim in self.claims for evidence_id in claim.evidenceIds}
         if linked_ids != set(evidence_by_id):

@@ -18,7 +18,11 @@ function block(value:AnswerBlock|null):AnswerBlock|null {
 export function sanitizeSnapshot(result:FactCheckResult):StoredSnapshot {
   return {
     text:result.text,focus:result.focus,model:result.model,reasoning:result.reasoning,checkedAt:result.checkedAt,
-    claims:result.claims.map(({id,quote,start,end,kind,factScore,scoreBand,scoreLabel,verdictCode,verdict,tone,summary,confirmed,unresolved,warnings,evidenceIds})=>({id,quote,start,end,kind,factScore,scoreBand,scoreLabel,verdictCode,verdict,tone,summary,confirmed:[...confirmed],unresolved:[...unresolved],warnings:[...warnings],evidenceIds:[...evidenceIds]})),
+    claims:result.claims.map(({id,quote,statement,start,end,kind,factScore,scoreBand,scoreLabel,verdictCode,verdict,tone,summary,confirmed,refuted,unresolved,warnings,evidenceIds,parts})=>({
+      id,quote,...(statement === undefined ? {} : {statement}),start,end,kind,factScore,scoreBand,scoreLabel,verdictCode,verdict,tone,summary,
+      confirmed:[...confirmed],...(refuted === undefined ? {} : {refuted:[...refuted]}),unresolved:[...unresolved],warnings:[...warnings],evidenceIds:[...evidenceIds],
+      ...(parts === undefined ? {} : {parts:parts.map(({statement,verdictCode,verdict,factScore,summary,confirmed,evidenceIds})=>({statement,verdictCode,verdict,factScore,summary,...(confirmed === undefined ? {} : {confirmed:[...confirmed]}),evidenceIds:[...evidenceIds]}))}),
+    })),
     sources:result.sources.map(({id,url,title,publisher,publishedAt,retrievedAt,accessStatus,sourceType,originGroupId})=>({id,url,title,publisher,publishedAt,retrievedAt,accessStatus,sourceType,originGroupId})),
     evidence:result.evidence.map(({id,claimId,sourceId,quote,quoteTranslation,quoteVerified,relation})=>({id,claimId,sourceId,quote,quoteTranslation,quoteVerified,relation})),
     warnings:[...result.warnings],

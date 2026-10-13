@@ -8,7 +8,7 @@ import type { Claim } from './demo-state';
 import { MODEL_OPTIONS } from '../lib/fact-check-contract';
 import type { AgentStage, AnswerBlock, AttachedImage, ContentSummary, FactCheckAnswer, FactClaim, FactEvidence, FactCheckRequest, FactCheckResult, FactSource, ModelOption, ModelPreference, ProgressClaim, ProgressSource } from '../lib/fact-check-contract';
 import { sourceDiscoveryLabel } from '../lib/source-discovery';
-import { scoreBand, scoreLabel } from '../lib/fact-score';
+import { scoreBand, scoreLabel, verdictBreakdown } from '../lib/fact-score';
 import { stripYoutubeApiDataForExport } from '../lib/youtube-context';
 import { FactCheckError, faviconUrlFor, readFactCheckStream, safeSourceUrl, validResult } from './fact-check-client';
 import { composeAssistantReply, createAnswerCitationDisplayState, modelLabel as modelNameLabel, presentAnswerCitations } from './fact-check-reply';
@@ -201,6 +201,24 @@ function AnswerOverview({answer, sources}: {answer: FactCheckAnswer; sources: Fa
   </section>;
 }
 
+function TruthBreakdown({claims, evidence, sources}: {claims: FactClaim[]; evidence: FactEvidence[]; sources: FactSource[]}) {
+  const groups = verdictBreakdown(claims);
+  return <div className="truth-breakdown" aria-label="사실과 거짓 구분">
+    {(['confirmed', 'refuted', 'unresolved'] as const).map(key => groups[key].length > 0 && <section className={`answer-section${key === 'refuted' ? ' answer-section--counter' : key === 'unresolved' ? ' answer-section--uncertainty' : ''}`} key={key}>
+      <h4>{{confirmed: '사실로 확인된 내용', refuted: '거짓으로 확인된 내용', unresolved: '판단을 보류한 내용'}[key]}</h4>
+      <ul className="answer-section-items">{groups[key].map((item, index) => {
+        const citations = evidence.filter(quote => item.evidenceIds.includes(quote.id) && quote.claimId === item.claimId && quote.quoteVerified).map(quote => ({sourceId: quote.sourceId, quote: quote.quote}));
+        const corrected = key === 'refuted' && item.confirmed.length > 0;
+        return <li key={index}>
+          {key === 'refuted' && <h4>틀린 부분</h4>}
+          <AnswerBlockView block={{text: item.statement + (item.summary ? ` ${item.summary}` : ''), citations: corrected ? [] : citations}} sources={sources} citationState={createAnswerCitationDisplayState(sources)} verifiedEvidence/>
+          {corrected && <><h4>근거상 올바른 내용</h4><AnswerBlockView block={{text: item.confirmed.join(' '), citations}} sources={sources} citationState={createAnswerCitationDisplayState(sources)} verifiedEvidence/></>}
+        </li>;
+      })}</ul>
+    </section>)}
+  </div>;
+}
+
 function JudgmentReply({claims, evidence, sources}: {claims: FactClaim[]; evidence: FactEvidence[]; sources: FactSource[]}) {
   return <section className="ai-answer" aria-label="판정 결과">
     <div className="ai-answer-heading"><span className="answer-spark" aria-hidden="true">✦</span><h3>판정 결과</h3></div>
@@ -208,8 +226,10 @@ function JudgmentReply({claims, evidence, sources}: {claims: FactClaim[]; eviden
     {claims.map(claim => <section className="answer-section" key={claim.id}>
       <h4>{claim.quote}</h4><p>{claim.verdict}</p>
       <AnswerBlockView block={{text: claim.summary, citations: evidence.filter(item => claim.evidenceIds.includes(item.id) && item.claimId === claim.id && item.quoteVerified).map(item => ({sourceId: item.sourceId, quote: item.quote}))}} sources={sources} citationState={createAnswerCitationDisplayState(sources)} verifiedEvidence/>
-      {claim.confirmed.length > 0 && <><h4>확인된 내용</h4><ul>{claim.confirmed.map((text, index) => <li key={index}><SourceAnnotatedText text={text} sources={sources}/></li>)}</ul></>}
-      {claim.unresolved.length > 0 && <><h4>남은 불확실성</h4><ul>{claim.unresolved.map((text, index) => <li key={index}><SourceAnnotatedText text={text} sources={sources}/></li>)}</ul></>}
+      {claim.evidenceIds.length > 0 && (claim.parts?.length || claim.refuted?.length) ? <TruthBreakdown claims={[claim]} evidence={evidence} sources={sources}/> : <>
+        {claim.confirmed.length > 0 && <><h4>확인된 내용</h4><ul>{claim.confirmed.map((text, index) => <li key={index}><SourceAnnotatedText text={text} sources={sources}/></li>)}</ul></>}
+        {claim.unresolved.length > 0 && <><h4>남은 불확실성</h4><ul>{claim.unresolved.map((text, index) => <li key={index}><SourceAnnotatedText text={text} sources={sources}/></li>)}</ul></>}
+      </>}
       {claim.warnings.length > 0 && <><h4>주의사항</h4><ul>{claim.warnings.map((text, index) => <li key={index}><SourceAnnotatedText text={text} sources={sources}/></li>)}</ul></>}
     </section>)}
   </section>;
@@ -293,7 +313,7 @@ function VerifyTimeline({progress}: {progress: ChatProgress}) {
   const currentIndex = progress.completed
     ? VERIFY_STAGES.length
     : Math.max(0, VERIFY_STAGES.findIndex(stage => stage.id === progress.statusStage));
-  const visibleStages = VERIFY_STAGES.slice(0, Math.min(VERIFY_STAGES.length, Math.max(3, currentIndex + 1)));
+  const visibleStages = VERIFY_STAGES;
   const [travel, setTravel] = useState<{from: number; to: number; key: number} | null>(null);
   const prevRef = useRef(currentIndex);
   useEffect(() => {
@@ -491,7 +511,9 @@ export default function FactCheckDashboard() {
   const warningCount = snapshot ? snapshot.demo ? snapshot.claims.filter(claim => claim.scoreBand !== 'verified').length : liveResult?.warnings.length ?? 0 : 0;
   const selectedEvidence = selected && liveResult ? liveResult.evidence.filter(evidence => evidence.claimId === selected.id && selected.evidenceIds.includes(evidence.id)) : [];
   const selectedSourceIds = new Set(snapshot?.demo ? sourceDocs.map(source => source.id) : selectedEvidence.map(evidence => evidence.sourceId));
+  const highlightSelectedSources = (snapshot?.claims.length ?? 0) > 1;
   const selectedLiveClaim = selected && liveResult ? liveResult.claims.find(claim => claim.id === selected.id) : null;
+  const canShowCorrection = Boolean(selectedLiveClaim && selectedEvidence.length > 0 && (selectedLiveClaim.parts?.length || selectedLiveClaim.refuted?.length));
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1055,11 +1077,12 @@ export default function FactCheckDashboard() {
               <div className="dashboard-left-stack">
                 <Panel className="trust-panel"><TrustIndex score={trustScore} claimCount={snapshot.claims.length} sourceCount={sourceCount} evidenceCount={evidenceCount} warningCount={warningCount} claims={snapshot.claims} selectedClaimId={selected?.id} onSelectClaim={select}/></Panel>
                 <div className="mobile-tabs" role="group" aria-label="검토 화면 선택"><span className="mobile-tabs-indicator" data-active={mobileTab} aria-hidden="true"/><button aria-pressed={mobileTab === 'results'} onClick={() => setMobileTab('results')}>결과</button><button aria-pressed={mobileTab === 'sources'} onClick={() => setMobileTab('sources')}>출처</button></div>
-                <Panel className="source-index-panel"><div className="panel-top"><h3><Icon name="book" size={17}/><ScrambleText>검토한 출처</ScrambleText></h3><span>{sourceCount}개 수집</span></div><div className="source-index-grid">{snapshot.demo ? documents.map((source, index) => <button className={selectedSourceIds.has(source.id) ? 'source-index-card is-selected-claim-source' : 'source-index-card'} ref={spotlight} key={source.id} onClick={() => setDialog(source.id)}><span className="source-index-number">{String(index + 1).padStart(2, '0')}</span><span><strong>{source.title}</strong><small>{source.publisher}</small></span><Icon name="arrow" size={15}/></button>) : liveResult?.sources.map((source, index) => {const href = safeSourceUrl(source.url); const sourceLabel = source.sourceType === '유튜브' ? source.youtubeDataStatus === 'collected' ? `공개 댓글 ${source.youtubeComments.length}개` : source.youtubeDataStatus === 'not_configured' ? '댓글 API 미설정' : '댓글 조회 불가' : source.accessStatus === 'verified' ? '원문 확인' : '접근 불가'; const content = <><span className="source-index-number">{String(index + 1).padStart(2, '0')}</span><span><strong>{source.youtubeTitle || source.title}</strong><small>{source.sourceType} · {source.publisher} · {sourceDiscoveryLabel(source)} · {sourceLabel}</small></span><Icon name="arrow" size={15}/></>; return href ? <a className={selectedSourceIds.has(source.id) ? 'source-index-card is-selected-claim-source' : 'source-index-card'} ref={spotlight} href={href} target="_blank" rel="noopener noreferrer" key={source.id}>{content}</a> : <div className={selectedSourceIds.has(source.id) ? 'source-index-card is-selected-claim-source' : 'source-index-card'} ref={spotlight} key={source.id}>{content}</div>;})}{!sourceCount && <div className="source-index-empty">아직 수집된 출처가 없습니다.</div>}</div></Panel>
+                <Panel className="source-index-panel"><div className="panel-top"><h3><Icon name="book" size={17}/><ScrambleText>검토한 출처</ScrambleText></h3><span>{sourceCount}개 수집</span></div><div className="source-index-grid">{snapshot.demo ? documents.map((source, index) => <button className={highlightSelectedSources && selectedSourceIds.has(source.id) ? 'source-index-card is-selected-claim-source' : 'source-index-card'} ref={spotlight} key={source.id} onClick={() => setDialog(source.id)}><span className="source-index-number">{String(index + 1).padStart(2, '0')}</span><span><strong>{source.title}</strong><small>{source.publisher}</small></span><Icon name="arrow" size={15}/></button>) : liveResult?.sources.map((source, index) => {const href = safeSourceUrl(source.url); const sourceLabel = source.sourceType === '유튜브' ? source.youtubeDataStatus === 'collected' ? `공개 댓글 ${source.youtubeComments.length}개` : source.youtubeDataStatus === 'not_configured' ? '댓글 API 미설정' : '댓글 조회 불가' : source.accessStatus === 'verified' ? '원문 확인' : '접근 불가'; const content = <><span className="source-index-number">{String(index + 1).padStart(2, '0')}</span><span><strong>{source.youtubeTitle || source.title}</strong><small>{source.sourceType} · {source.publisher} · {sourceDiscoveryLabel(source)} · {sourceLabel}</small></span><Icon name="arrow" size={15}/></>; return href ? <a className={highlightSelectedSources && selectedSourceIds.has(source.id) ? 'source-index-card is-selected-claim-source' : 'source-index-card'} ref={spotlight} href={href} target="_blank" rel="noopener noreferrer" key={source.id}>{content}</a> : <div className={highlightSelectedSources && selectedSourceIds.has(source.id) ? 'source-index-card is-selected-claim-source' : 'source-index-card'} ref={spotlight} key={source.id}>{content}</div>;})}{!sourceCount && <div className="source-index-empty">아직 수집된 출처가 없습니다.</div>}</div></Panel>
               </div>
               <Panel className="evidence-panel"><div className="panel-top"><h3 className="scramble-panel-title"><Icon name="lens" size={18}/><ScrambleText>선택한 주장과 근거</ScrambleText></h3><span>{snapshot.demo ? '예시 비교' : '수집된 원문 비교'}</span></div><AnimatePresence mode="wait" initial={false}><motion.div className="detail-content" key={selected?.id || 'empty'} initial={reduce ? false : {opacity: 0, y: 5}} animate={{opacity: 1, y: 0}} exit={{opacity: 0}} transition={{duration: reduce ? 0 : 0.18}}>{selected ? <>
                 <div className="result-overview"><span className="article-kicker">선택한 주장</span><h3>{selected.quote}</h3><Badge claim={selected}/><p><SourceAnnotatedText text={selected.summary} sources={liveResult?.sources ?? []}/></p></div>
-                {!snapshot.demo && selectedLiveClaim && <div className="detail-blocks"><div><h4><ScrambleText>확인된 내용</ScrambleText></h4>{selectedLiveClaim.confirmed.length ? <ul>{selectedLiveClaim.confirmed.map((text, index) => <li key={index}>{text}</li>)}</ul> : <p>직접 확인된 내용이 없습니다.</p>}</div><div><h4><ScrambleText>남은 불확실성</ScrambleText></h4>{selectedLiveClaim.unresolved.length ? <ul>{selectedLiveClaim.unresolved.map((text, index) => <li key={index}>{text}</li>)}</ul> : <p>현재 기록된 불확실성이 없습니다.</p>}</div>{selectedLiveClaim.warnings.length > 0 && <div><h4><ScrambleText>주장별 주의사항</ScrambleText></h4><ul>{selectedLiveClaim.warnings.map((text, index) => <li key={index}>{text}</li>)}</ul></div>}</div>}
+                {!snapshot.demo && selectedLiveClaim && canShowCorrection && <><Panel className="truth-breakdown-panel"><div className="panel-top"><h3><Icon name="shield" size={17}/>틀린 부분과 근거상 올바른 내용</h3></div><TruthBreakdown claims={[selectedLiveClaim]} evidence={liveResult?.evidence ?? []} sources={liveResult?.sources ?? []}/></Panel>{selectedLiveClaim.warnings.length > 0 && <div className="detail-blocks"><div><h4><ScrambleText>주장별 주의사항</ScrambleText></h4><ul>{selectedLiveClaim.warnings.map((text, index) => <li key={index}>{text}</li>)}</ul></div></div>}</>}
+                {!snapshot.demo && selectedLiveClaim && !canShowCorrection && <div className="detail-blocks"><div><h4><ScrambleText>확인된 내용</ScrambleText></h4>{selectedLiveClaim.confirmed.length ? <ul>{selectedLiveClaim.confirmed.map((text, index) => <li key={index}>{text}</li>)}</ul> : <p>직접 확인된 내용이 없습니다.</p>}</div><div><h4><ScrambleText>남은 불확실성</ScrambleText></h4>{selectedLiveClaim.unresolved.length ? <ul>{selectedLiveClaim.unresolved.map((text, index) => <li key={index}>{text}</li>)}</ul> : <p>현재 기록된 불확실성이 없습니다.</p>}</div>{selectedLiveClaim.warnings.length > 0 && <div><h4><ScrambleText>주장별 주의사항</ScrambleText></h4><ul>{selectedLiveClaim.warnings.map((text, index) => <li key={index}>{text}</li>)}</ul></div>}</div>}
               </> : <div className="empty-evidence"><Icon name="lens" size={27}/><h4><ScrambleText>주장을 선택해 주세요</ScrambleText></h4><p>위의 주장 카드를 선택하면 연결된 출처와 인용이 표시됩니다.</p></div>}</motion.div></AnimatePresence></Panel>
             </div></>
           </> : <Panel className="dashboard-empty"><div className="empty-orbit"><Icon name="lens" size={31}/></div><h3><ScrambleText>검증 결과가 이곳에 쌓입니다.</ScrambleText></h3><p>대화창에 원문을 보내면 주장별 신뢰지수와 근거 출처를 연결해 보여드립니다.</p><div className="empty-preview-stats"><span><strong>--</strong><small>신뢰지수</small></span><span><strong>--</strong><small>검토 출처</small></span><span><strong>--</strong><small>연결 근거</small></span></div><button className="secondary-button" onClick={loadSample}>예시 대시보드 보기 <Icon name="arrow"/></button></Panel>}
@@ -1070,7 +1093,7 @@ export default function FactCheckDashboard() {
     <Modal open={dialog !== null} title={dialog === 'external-consent' ? '외부 서비스 전송 동의' : dialog === 'storage-consent' ? '대화 저장 설정' : activeDocument?.title || (dialog === 'guide' ? '근거를 읽는 세 가지 원칙' : '검증 안내')} onClose={() => {pendingConsent.current = false; setDialog(null);}} footer={dialog === 'external-consent' ? <div className="dialog-done"><button type="button" className="secondary-button" onClick={() => {pendingConsent.current = false; setDialog(null);}}>동의하지 않음</button><button type="button" className="secondary-button" onClick={acceptExternalConsent}>동의하고 시작</button></div> : dialog === 'storage-consent' ? <div className="dialog-done"><button type="button" className="secondary-button" onClick={() => setDialog(null)}>취소</button><button type="button" className="secondary-button" onClick={() => {applyStorageConsent(); setDialog(null);}}>설정 저장</button></div> : undefined}>
       {dialog === 'external-consent' || dialog === 'storage-consent' ? <div className="about-copy">
         {dialog === 'external-consent' ? <>
-        <p>의도 분석·검증·요약을 위해 입력한 텍스트, 확인 요청, 링크, 첨부 이미지와 필요한 이전 대화 맥락을 서버로 전송합니다. 설정된 AI 서비스(하이브(Hive) API를 통한 DeepSeek·OpenAI·Google Gemini·AI Gateway), TypeSafe JEV, 검색 서비스(Tavily 및 모델 제공자의 검색 기능)가 요청 처리에 사용될 수 있습니다. 링크와 검색된 공개 페이지는 서버에서 읽으며 YouTube 기능은 Google 서비스에 영상 ID를 전송해 자막·공개 영상 정보·댓글을 조회할 수 있습니다.</p>
+        <p>의도 분석·검증·요약을 위해 입력한 텍스트, 확인 요청, 링크, 첨부 이미지와 필요한 이전 대화 맥락을 서버로 전송합니다. 설정된 AI 서비스(하이브(Hive) API를 통한 DeepSeek·OpenAI·Google Gemini·AI Gateway), TypeSafe JEV, 검색 서비스(Tavily 및 모델 제공자의 검색 기능)가 요청 처리에 사용될 수 있습니다. 검증할 때 주장별 YouTube 전용 검색도 별도로 실행할 수 있으며, 관련 동영상만 출처 후보에 표시합니다. 링크와 검색된 공개 페이지는 서버에서 읽고 YouTube 기능은 Google 서비스에 영상 ID를 전송해 자막·공개 영상 정보·댓글을 조회할 수 있습니다.</p>
         <p>민감정보·제3자의 비공개 정보는 입력하지 마세요. 외부 제공자의 처리·보관 정책은 <a href="/privacy" target="_blank" rel="noopener noreferrer">개인정보 처리방침</a>과 <a href="/terms" target="_blank" rel="noopener noreferrer">이용약관</a>에서 확인해 주세요. 이 안내는 법적 검토 완료를 의미하지 않습니다.</p>
         <p>전송 동의는 이 브라우저에서 안내 버전만 저장해 다음 질문과 새로고침 후에도 유지합니다. 동의 철회·사이트 데이터 삭제·안내 범위 변경 시 다시 확인하며, 브라우저 저장이 차단되면 현재 화면에서만 유지합니다. 거절하면 외부 호출을 하지 않고 입력을 보존합니다. 대화 저장은 별도 선택이며 자동으로 켜지지 않습니다.</p>
         </> : <p>대화 저장은 외부 전송 동의와 별개입니다. 저장을 꺼도 기존 기록은 남으며 대화 목록의 삭제 버튼으로 지울 수 있습니다.</p>}

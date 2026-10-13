@@ -1,6 +1,8 @@
-import type { AgentEvent, AnswerBlock, FactCheckAnswer, FactCheckResult, FactSource, MarketContext, ProgressClaim, ProgressSource } from '../lib/fact-check-contract';
+import type { AgentEvent, AnswerBlock, FactCheckAnswer, FactCheckResult, FactClaim, FactSource, MarketContext, ProgressClaim, ProgressSource } from '../lib/fact-check-contract';
 // @ts-ignore -- explicit extension is required by the Node 24 native test runner.
 import { FACT_SCORE_BANDS, scoreBand, scoreLabel } from '../lib/fact-score.ts';
+// @ts-ignore -- explicit extension is required by the Node native test runner.
+import { VERDICTS } from '../lib/fact-check-contract.ts';
 
 type Options = {
   signal?: AbortSignal;
@@ -94,17 +96,40 @@ function validMarket(value: unknown): value is MarketContext {
       && [candle.open, candle.high, candle.low, candle.close].every(n => typeof n === 'number' && Number.isFinite(n))
       && (candle.volume == null || (typeof candle.volume === 'number' && Number.isFinite(candle.volume))));
 }
+function validClaimParts(claim: FactClaim, result: FactCheckResult): boolean {
+  if (claim.refuted !== undefined && (!Array.isArray(claim.refuted) || claim.refuted.length > 5 || !claim.refuted.every(text => typeof text === 'string'))) return false;
+  if (claim.parts === undefined) return true;
+  if (!Array.isArray(claim.parts) || claim.parts.length === 1 || claim.parts.length > 3) return false;
+  const linked: string[] = [];
+  for (const part of claim.parts) {
+    if (!part || typeof part.statement !== 'string' || part.statement.length < 1 || part.statement.length > 2000
+        || !VERDICTS.includes(part.verdictCode) || typeof part.verdict !== 'string' || part.verdict.length < 1 || part.verdict.length > 100
+        || typeof part.summary !== 'string' || part.summary.length < 1 || part.summary.length > 2000
+        || (part.confirmed !== undefined && (!Array.isArray(part.confirmed) || part.confirmed.length > 5 || !part.confirmed.every(text => typeof text === 'string' && text.length <= 2000)))
+        || !Number.isInteger(part.factScore) || part.factScore < 0 || part.factScore > 100
+        || !Array.isArray(part.evidenceIds) || part.evidenceIds.length > 2) return false;
+    const quotes = part.evidenceIds.map(id => result.evidence.find(item => item.id === id && item.claimId === claim.id && item.quoteVerified));
+    if (part.evidenceIds.some(id => !claim.evidenceIds.includes(id)) || quotes.some(item => !item)) return false;
+    const relations = new Set(quotes.map(item => item?.relation));
+    if (part.verdictCode === 'mostly_supported' && (!relations.has('supports') || relations.has('contradicts'))) return false;
+    if (part.verdictCode === 'contradicted' && (!relations.has('contradicts') || relations.has('supports'))) return false;
+    linked.push(...part.evidenceIds);
+  }
+  return !claim.parts.length || (new Set(linked).size === linked.length && linked.length === claim.evidenceIds.length);
+}
+
 export function validResult(value: unknown): value is FactCheckResult {
   if (!value || typeof value !== 'object') return false;
   const r = value as FactCheckResult;
   return r.demo === false && typeof r.text === 'string' && typeof r.focus === 'string' && typeof r.checkedAt === 'string' && typeof r.model === 'string' && (r.reasoning === 'max' || r.reasoning === 'high')
-    && Array.isArray(r.claims) && r.claims.length <= 3 && r.claims.every(c => typeof c.id === 'string' && typeof c.quote === 'string' && Number.isInteger(c.start) && Number.isInteger(c.end) && c.start >= 0 && c.end > c.start && r.text.slice(c.start, c.end) === c.quote && Number.isInteger(c.factScore) && c.factScore >= 0 && c.factScore <= 100 && FACT_SCORE_BANDS.includes(c.scoreBand) && c.scoreBand === scoreBand(c.factScore) && c.scoreLabel === scoreLabel(c.factScore) && typeof c.summary === 'string' && typeof c.tone === 'string' && typeof c.verdict === 'string' && [c.confirmed,c.unresolved,c.warnings,c.evidenceIds].every(a=>Array.isArray(a)&&a.every(s=>typeof s==='string')))
+    && Array.isArray(r.claims) && r.claims.length <= 3 && r.claims.every(c => typeof c.id === 'string' && typeof c.quote === 'string' && (c.statement === undefined || typeof c.statement === 'string' && c.statement.length <= 12000) && Number.isInteger(c.start) && Number.isInteger(c.end) && c.start >= 0 && c.end > c.start && r.text.slice(c.start, c.end) === c.quote && Number.isInteger(c.factScore) && c.factScore >= 0 && c.factScore <= 100 && FACT_SCORE_BANDS.includes(c.scoreBand) && c.scoreBand === scoreBand(c.factScore) && c.scoreLabel === scoreLabel(c.factScore) && typeof c.summary === 'string' && typeof c.tone === 'string' && typeof c.verdict === 'string' && [c.confirmed,c.unresolved,c.warnings,c.evidenceIds].every(a=>Array.isArray(a)&&a.every(s=>typeof s==='string')))
     && Array.isArray(r.sources) && r.sources.every(s => ['id','url','title','publisher','retrievedAt','sourceType'].every(k=>typeof s[k as keyof typeof s]==='string') && ['verified','unavailable'].includes(s.accessStatus) && (s.publishedAt == null || typeof s.publishedAt === 'string') && (s.originGroupId == null || typeof s.originGroupId === 'string') && (s.youtubeTitle == null || (typeof s.youtubeTitle === 'string' && s.youtubeTitle.length <= 300)) && Array.isArray(s.youtubeComments) && s.youtubeComments.length <= 10 && s.youtubeComments.every(comment => typeof comment === 'string' && comment.length <= 10000) && ['not_applicable','not_configured','collected','unavailable'].includes(s.youtubeDataStatus) && (s.sourceType === '유튜브' ? s.youtubeDataStatus !== 'not_applicable' : s.youtubeDataStatus === 'not_applicable'))
     && r.sources.every(validSourceMetadata)
     && r.sources.every(validYoutubeMetadata)
     && Array.isArray(r.evidence) && r.evidence.every(e=>['id','claimId','sourceId','quote'].every(k=>typeof e[k as keyof typeof e]==='string') && (e.quoteTranslation === undefined || e.quoteTranslation === null || typeof e.quoteTranslation === 'string') && typeof e.quoteVerified === 'boolean' && validEvidenceSection(e))
     && Array.isArray(r.warnings) && r.warnings.every(w=>typeof w==='string') && validAnswer(r.answer,r.sources)
-    && validMarket((r as Record<string, unknown>).market);
+    && validMarket((r as Record<string, unknown>).market)
+    && r.claims.every(claim => validClaimParts(claim, r));
 }
 function validProgressSource(value: unknown): value is ProgressSource {
   if (!value || typeof value !== 'object') return false;

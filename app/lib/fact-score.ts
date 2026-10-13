@@ -28,3 +28,19 @@ export function normalizeFactScore(verdictCode: string, requestedScore: number):
   if (verdictCode === 'contradicted') return Math.min(39, score);
   return 50;
 }
+
+type VerdictEntry = {
+  id?: string; statement?: string; quote?: string; verdictCode?: string; verdict?: string | null;
+  summary?: string; confirmed?: readonly string[]; evidenceIds?: readonly string[]; parts?: readonly VerdictEntry[];
+};
+export function verdictBreakdown(claims: readonly VerdictEntry[]) {
+  const groups: Record<'confirmed'|'refuted'|'unresolved', {statement: string; summary?: string; confirmed: readonly string[]; claimId: string; evidenceIds: readonly string[]}[]> = {confirmed:[], refuted:[], unresolved:[]};
+  for (const claim of claims) {
+    for (const part of claim.parts?.length ? claim.parts : [claim]) {
+      if (!part.verdictCode || part.verdictCode === 'not_checkable') continue;
+      const key = part.verdictCode === 'mostly_supported' ? 'confirmed' : part.verdictCode === 'contradicted' ? 'refuted' : 'unresolved';
+      groups[key].push({statement:part.statement || part.quote || '', summary:part.summary, confirmed:part.confirmed || [], claimId:claim.id || '', evidenceIds:part.evidenceIds || []});
+    }
+  }
+  return groups;
+}
