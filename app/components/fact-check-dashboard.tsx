@@ -114,10 +114,16 @@ function TrustIndex({score, claimCount, sourceCount, evidenceCount, warningCount
 
 type ChatProgress = {
   status?: string; statusStage?: AgentStage;
+  requestStartedAt?: number; statusElapsedSeconds?: number;
   sourcesFound?: ProgressSource[]; sourcesFoundElapsedSeconds?: number;
   sourcesRead?: ProgressSource[]; sourcesReadElapsedSeconds?: number;
   claims?: ProgressClaim[]; claimsElapsedSeconds?: number; completed?: boolean; error?: string;
 };
+function progressElapsedSeconds(progress: ChatProgress, now: number) {
+  const elapsed = progress.statusElapsedSeconds ?? 0;
+  if (progress.completed || progress.error || progress.requestStartedAt === undefined) return elapsed;
+  return Math.max(elapsed, Math.floor((now - progress.requestStartedAt) / 1000));
+}
 type ChatMessage = {id: string; role: 'assistant' | 'user'; text?: string; answer?: FactCheckAnswer; judgments?: FactClaim[]; evidence?: FactEvidence[]; factScore?: number | null; verdict?: string | null; search?: string | null; scoreMode?: 'jev' | 'claims'; scoreEngine?: string | null; sources?: FactSource[]; progress?: ChatProgress; summary?: ContentSummary; meta?: string; tone?: 'normal' | 'error'; imagePreview?: string; thinking?: boolean; storageStatus?: 'cancelled'};
 type ModelSelection = ModelPreference;
 
@@ -337,16 +343,14 @@ function VerifyTimeline({progress}: {progress: ChatProgress}) {
 }
 
 function ProgressReply({progress}: {progress: ChatProgress}) {
-  const [stageElapsedSeconds, setStageElapsedSeconds] = useState(0);
+  const [now, setNow] = useState(() => performance.now());
   useEffect(() => {
     if (progress.completed || progress.error) return;
-    const startedAt = performance.now();
-    setStageElapsedSeconds(0);
-    const timer = window.setInterval(() => {
-      setStageElapsedSeconds(Math.floor((performance.now() - startedAt) / 1000));
-    }, 1000);
+    setNow(performance.now());
+    const timer = window.setInterval(() => setNow(performance.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [progress.statusStage, progress.completed, progress.error]);
+  }, [progress.requestStartedAt, progress.completed, progress.error]);
+  const elapsedSeconds = progressElapsedSeconds(progress, now);
   const claims = progress.claims;
   const sources = progress.sourcesRead ?? [];
   const sourceNumbers = new Map(sources.map((source, index) => [source.id, index + 1]));
@@ -356,7 +360,7 @@ function ProgressReply({progress}: {progress: ChatProgress}) {
     {!progress.completed && !progress.error && <ThinkingLoader label={progress.status ?? '최종 답변을 만드는 중입니다.'}/>}
     <VerifyTimeline progress={progress}/>
     {progress.status && <p className="progress-current-stage" data-testid="progress-stage">
-      <span>{progress.status}</span><time>{stageElapsedSeconds}초 경과</time>
+      <span>{progress.status}</span><time>총 {elapsedSeconds}초 경과</time>
     </p>}
     {progress.sourcesFound !== undefined && progress.sourcesRead === undefined && <ProgressSourceList title="검색된 출처 후보" sources={progress.sourcesFound} elapsedSeconds={progress.sourcesFoundElapsedSeconds} testId="progress-candidate-source"/>}
     {progress.sourcesRead !== undefined && <ProgressSourceList title="가져온 원문" sources={progress.sourcesRead} elapsedSeconds={progress.sourcesReadElapsedSeconds} testId="progress-read-source"/>}
@@ -561,7 +565,9 @@ export default function FactCheckDashboard() {
     if (request.current) cancelNoticed.current = request.current;
     stop();
     dispatch({type: 'cancel'});
-    setMessages(messages => messages.filter(message => !message.thinking));
+    setMessages(messages => messages.filter(message => !message.thinking).map(message => message.progress && !message.progress.completed && !message.progress.error
+      ? {...message, progress: {...message.progress, statusElapsedSeconds: progressElapsedSeconds(message.progress, performance.now()), error: '검증을 중단했습니다.'}}
+      : message));
     setNotice('요청을 중단했습니다.');
     addMessage({role:'assistant',text:'요청을 중단했습니다.',storageStatus:'cancelled'});
   }
@@ -740,7 +746,7 @@ export default function FactCheckDashboard() {
     const updateProgressMessage = (patch: Partial<ChatProgress>) => {
       if (generation.current !== current) return;
       setMessages(messages => messages.map(message => message.id === progressMessageId
-        ? {...message, thinking: false, progress: {...message.progress, ...patch}}
+        ? {...message, thinking: false, progress: {...message.progress, ...patch, requestStartedAt: startedAt, statusElapsedSeconds: elapsedSeconds()}}
         : message));
     };
     let gate: GateDecision | null = null;
@@ -918,7 +924,7 @@ export default function FactCheckDashboard() {
         setMessages(messages => {
           const target = messages.find(item => item.id === progressMessageId);
           if (target?.progress) {
-            return messages.map(item => item.id === progressMessageId ? {...item, progress: {...item.progress, error: message}} : item);
+            return messages.map(item => item.id === progressMessageId ? {...item, progress: {...item.progress, statusElapsedSeconds: elapsedSeconds(), error: message}} : item);
           }
           return [...messages.filter(item => item.id !== progressMessageId), {id: errorId, role: 'assistant', text: message, tone: 'error'}];
         });
