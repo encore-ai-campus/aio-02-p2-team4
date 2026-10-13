@@ -131,6 +131,17 @@ npm run build        # 프로덕션 빌드 생성
 
 ---
 
+## 👥 팀원 및 역할
+
+| 이름 | 역할 | 담당 영역 | GitHub |
+| :--- | :--- | :--- | :--- |
+| **김훈** | 팀장 | PM & BE | [@teach97](https://github.com/teach97) |
+| **전소예** | 팀원 | BE | [@soyedev](https://github.com/soyedev) |
+| **이성우** | 팀원 | QA | [@swoo4446](https://github.com/swoo4446) |
+| **백승준** | 팀원 | FE | [@bsj12017](https://github.com/bsj12017) |
+
+---
+
 ## 📚 팀 문서 및 세부 명세서
 
 상세한 기획 및 기술 문서는 저장소의 [`docs/`](docs/README.md) 디렉터리에서 확인하실 수 있습니다.
