@@ -106,9 +106,29 @@
   color: #f4f4f4;
 }
 
+.deleteAll {
+  flex: none;
+  margin-top: 4px;
+  padding: 7px 2px;
+  border: 0;
+  background: transparent;
+  color: #8d9398;
+  font: inherit;
+  font-size: 10px;
+  line-height: 1;
+  text-align: left;
+  cursor: pointer;
+  transition: color .18s ease;
+}
+
+.deleteAll:hover {
+  color: #f4f4f4;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .marker,
-  .delete {
+  .delete,
+  .deleteAll {
     transition: none;
   }
 }

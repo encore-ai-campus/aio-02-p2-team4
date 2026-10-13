@@ -33,7 +33,7 @@ export async function handleConversationRequest(req:Request,path:string[]):Promi
   if(authority.username||authority.password||authority.pathname!=='/'||authority.search||authority.hash||authority.port!==url.port||
     (authority.hostname!==url.hostname&&!(local(authority.hostname)&&local(url.hostname))))return error('FORBIDDEN',403);
   const route=path.join('/');
-  const allowed=(route===''&&['GET','POST'].includes(method))||(route==='status'&&method==='GET')||(route==='session'&&method==='POST')||
+  const allowed=(route===''&&['GET','POST','DELETE'].includes(method))||(route==='status'&&method==='GET')||(route==='session'&&method==='POST')||
     (path.length===1&&UUID.test(route)&&['GET','DELETE'].includes(method))||(path.length===2&&UUID.test(path[0])&&path[1]==='messages'&&method==='POST');
   if(!allowed)return error('NOT_FOUND');
   const site=req.headers.get('sec-fetch-site');const origin=req.headers.get('origin');
