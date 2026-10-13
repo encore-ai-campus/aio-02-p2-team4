@@ -165,6 +165,7 @@ button, p, h3, dd { overflow-wrap: anywhere; }
 .answer-section-items > li { min-width: 0; }
 .truth-breakdown-panel { margin-top: 16px; }
 .truth-breakdown-panel .truth-breakdown { padding: 4px 20px 20px; }
+.truth-breakdown .answer-section h4.truth-breakdown-confirmed-heading { margin-top: 14px; }
 .answer-section-items > li + li { padding-top: 9px; border-top: 1px solid rgb(255 255 255 / .07); }
 .answer-conclusion { margin-top: 13px; padding: 12px 13px; border: 1px solid rgb(155 221 212 / .2); border-radius: 10px; background: linear-gradient(120deg, rgb(155 221 212 / .075), rgb(255 255 255 / .02)); }
 .answer-insufficient { padding: 11px 12px; border: 1px solid rgb(255 255 255 / .09); border-radius: 9px; color: #aeb9bc; background: rgb(255 255 255 / .025); font-size: 12px; line-height: 1.75; }
