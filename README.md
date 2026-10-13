@@ -1,5 +1,6 @@
 # 🔍 True or Not (팩트검증 에이전트)
-<img width="907" height="296" alt="스크린샷 2026-10-13 164717" src="https://github.com/user-attachments/assets/71c1d9c0-6e97-4ed3-b42b-38a551db0525" />
+![Uploading logo.png…]()
+
 
 
 > **"근거 없는 단정 대신, 투명한 출처와 원문으로 판단을 돕습니다."**  
