@@ -57,7 +57,25 @@
 | **근거 부족 (Insufficient Evidence)** | 신뢰할 만한 공개 출처가 부족함 (*거짓이라는 뜻이 아닙니다*) |
 | **검증 대상 아님 (Not a Claim)** | 단순한 개인 의견, 주관적 감상, 미래 예측 발언 |
 
-### 5. 안심할 수 있는 개인정보 보호
+### 5. JEV 빠른 판정 및 유연한 모델 선택 (Auto Fallback)
+
+<p align="center">
+  <img src="public/model-selector.png" alt="JEV 및 모델 선택 드롭다운" width="360" style="border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
+</p>
+
+사용자의 검증 목적과 환경에 맞게 모델과 검증 모드를 자유롭게 선택할 수 있습니다.
+
+- **JEV (Just Enough Verification) 모드**: 긴 종합 분석 대신 핵심 주장 판정과 신뢰도 점수만 빠르게 산출하는 고속 검증 모드입니다.
+- **다양한 고성능 LLM 지원**: Hive API 기반의 DeepSeek부터 OpenAI GPT, Google Gemini까지 최신 모델을 직접 선택하여 검증할 수 있습니다.
+- **Auto Fallback (자동 장애 복구)**: 특정 공급자 서버의 장애, 지연, 요청 한도 초과가 발생하더라도 검증이 중단되지 않고 다음 우선순위 모델로 자동 전환되어 응답을 완료합니다.
+
+#### Auto Fallback 전환 순서
+1. **DeepSeek V4.1 Flash Max** (Hive) : 고속 추론 및 기본 검증
+2. **GPT-6 Luna Max · Fast** (OpenAI) : DeepSeek 지연/장애 시 1차 폴백
+3. **Gemini 3.8 Flash** (Gemini) : OpenAI 장애 시 2차 폴백
+4. **Gemini 3.7 Flash** (Gemini) : 최종 안정화 폴백
+
+### 6. 안심할 수 있는 개인정보 보호
 - **기본 익명 사용**: 로그인 없이도 모든 기능을 자유롭게 이용할 수 있습니다.
 - **대화 저장 선택제 (기본 꺼짐)**: 대화 기록 보관은 사용자가 원할 때만 브라우저 설정에서 켤 수 있으며, 언제든 클릭 한 번으로 모든 기록을 즉시 삭제할 수 있습니다.
 
