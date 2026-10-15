@@ -1,8 +1,9 @@
 """Local True or Not API backed by the assembled LangGraph workflow."""
+import asyncio
 import hmac
 import os
 import subprocess
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Literal
 
@@ -29,9 +30,14 @@ from dotenv import dotenv_values
 async def lifespan(app):
     values = dotenv_values(Path(__file__).with_name('.env'))
     app.state.conversation_store = ConversationStore(os.getenv('DATABASE_URL',values.get('DATABASE_URL') or ''))
+    cleanup = asyncio.create_task(app.state.conversation_store.cleanup_expired()) if app.state.conversation_store.url else None
     try:
         yield
     finally:
+        if cleanup:
+            cleanup.cancel()
+            with suppress(asyncio.CancelledError):
+                await cleanup
         await app.state.conversation_store.close()
 
 

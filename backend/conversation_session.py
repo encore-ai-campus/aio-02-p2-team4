@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import hmac
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 SESSION_SECONDS = 30 * 86400
@@ -19,7 +20,7 @@ def issue_session(secret: str, now: int) -> str:
     return base64.urlsafe_b64encode(f'{payload}.{signature}'.encode()).decode().rstrip('=')
 
 
-def verify_session(token: str, secret: str, now: int) -> UUID:
+def verify_session_details(token: str, secret: str, now: int) -> tuple[UUID, datetime]:
     key = _key(secret)
     try:
         if len(token) > 256 or not token or '=' in token:
@@ -32,6 +33,10 @@ def verify_session(token: str, secret: str, now: int) -> UUID:
             raise ValueError()
         if not int(issued) <= now < int(expires) or int(expires) - int(issued) != SESSION_SECONDS:
             raise ValueError()
-        return UUID(owner)
+        return UUID(owner), datetime.fromtimestamp(int(expires), timezone.utc)
     except Exception:
         raise ValueError('SESSION_INVALID') from None
+
+
+def verify_session(token: str, secret: str, now: int) -> UUID:
+    return verify_session_details(token, secret, now)[0]

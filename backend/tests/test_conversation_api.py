@@ -35,3 +35,35 @@ def test_bulk_delete_requires_session_and_never_exposes_secrets(monkeypatch):
         failed = client.delete('/api/conversations',headers={'x-ton-session':token})
         assert failed.status_code == 503
         assert 'private' not in failed.text and 'secret' not in failed.text
+
+
+def test_creation_uses_signed_session_expiry_instead_of_another_thirty_days(monkeypatch):
+    from datetime import datetime, timezone
+    from uuid import uuid4
+    from conversation_contracts import Conversation
+    from conversation_session import issue_session
+
+    recorded = []
+
+    class Store:
+        url = ''
+
+        async def close(self):
+            pass
+
+        async def create(self, owner, payload, *, expires_at):
+            recorded.append((owner, expires_at))
+            return Conversation(id=uuid4(), title=payload.title,
+                                createdAt=datetime.now(timezone.utc), updatedAt=datetime.now(timezone.utc))
+
+    monkeypatch.setattr('main.ConversationStore', lambda url: Store())
+    monkeypatch.setattr('conversation_api.time.time', lambda: 5000)
+    monkeypatch.setenv('CONVERSATION_SESSION_SECRET', 's' * 40)
+    monkeypatch.setenv('DATABASE_URL', 'postgresql://unused/db')
+    token = issue_session('s' * 40, 1000)
+    with TestClient(app) as client:
+        response = client.post('/api/conversations', headers={'x-ton-session': token}, json={
+            'storageConsent': True, 'createRequestId': str(uuid4()), 'title': 'Retention test',
+        })
+    assert response.status_code == 200
+    assert recorded[0][1] == datetime.fromtimestamp(1000 + 30 * 86400, timezone.utc)

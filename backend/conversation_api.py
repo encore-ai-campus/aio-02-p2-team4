@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from pathlib import Path
 from dotenv import dotenv_values
 from conversation_contracts import ConversationCreate, MessageCreate, StorageConsent
-from conversation_session import issue_session, verify_session
+from conversation_session import issue_session, verify_session_details
 from conversation_store import StorageError
 
 router = APIRouter(prefix='/api/conversations')
@@ -36,7 +36,9 @@ def owner(request: Request):
     if not token:
         raise StorageError('SESSION_REQUIRED')
     try:
-        return verify_session(token,key,int(time.time()))
+        identity, expires_at = verify_session_details(token,key,int(time.time()))
+        request.state.conversation_expires_at = expires_at
+        return identity
     except ValueError:
         raise StorageError('SESSION_INVALID') from None
 
@@ -92,7 +94,8 @@ async def list_conversations(request: Request, identity=Depends(owner),cursor: s
 @router.post('')
 async def create(request: Request, identity=Depends(owner)):
     payload = validated(ConversationCreate,await body(request))
-    return output(await request.app.state.conversation_store.create(identity,payload))
+    return output(await request.app.state.conversation_store.create(
+        identity,payload,expires_at=request.state.conversation_expires_at))
 
 
 @router.get('/{id}')

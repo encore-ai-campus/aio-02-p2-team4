@@ -105,6 +105,8 @@ uv run python smoke_test_conversations.py
 
 `--init-session-secret`은 Git ignore가 확인된 `.env`에 서명 키가 없을 때만 생성합니다. Render에서는 환경 설정에 서명 키를 별도로 넣고 `uv run python migrate_conversations.py`만 실행합니다. 합성 DB 시험은 임시 대화만 만들고 종료 시 삭제하며 접속 정보·실제 사용자 대화를 출력하지 않습니다.
 
+2026-10-15부터 마이그레이션은 `001_conversations.sql`과 `002_conversation_expiry.sql`을 이름순으로 실행합니다. 신규 대화는 서명된 30일 세션의 원래 만료 시각을 `expires_at`에 저장합니다. 기존 기록은 소유자별 첫 대화 생성일 + 30일로 이관합니다. FastAPI 시작 시·매시간 만료 대화·메시지를 물리 삭제하며 서버 중단·DB 장애 시 다음 실행에 재시도합니다. 백엔드 갱신 전 마이그레이션을 실행해야 합니다.
+
 연결 풀은 최대 4개이며 DB 작업 제한은 3초입니다. 목록은 최대 30개, 메시지는 최신 100개까지 조회하고 이전 페이지를 제공합니다. 큰 한국어 답변이 모이면 응답 바이트 상한을 지키도록 페이지당 메시지 수를 줄입니다. 원문 전체·이미지·YouTube API 메타데이터/댓글·시장 데이터·진행 중 메시지는 저장하지 않습니다. 복원한 결과는 원래 검증 시각의 과거 기록입니다.
 
 무료 시연 DB: `true-or-not-conversations`, Singapore, PostgreSQL 18, 2026-11-03 만료 예정. 공개 웹서비스 배포·백업·유료 전환은 별도 범위입니다.

@@ -2,6 +2,7 @@
 import asyncio
 import base64
 import json
+import logging
 import ssl
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -9,6 +10,9 @@ from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 import asyncpg
 from conversation_contracts import Conversation, ConversationCreate, ConversationPage, MessageCreate, MessagePage, StoredMessage
+
+RETENTION_INTERVAL_SECONDS = 3600
+logger = logging.getLogger(__name__)
 
 
 class StorageError(Exception):
@@ -78,10 +82,24 @@ class ConversationStore:
         except Exception:
             raise StorageError('STORAGE_UNAVAILABLE') from None
 
-    async def create(self, owner: UUID, payload: ConversationCreate):
+    async def delete_expired(self):
+        async with self.connection() as conn:
+            result = await conn.execute('DELETE FROM conversations WHERE expires_at <= clock_timestamp()')
+            return int(result.rsplit(' ', 1)[-1])
+
+    async def cleanup_expired(self):
+        while True:
+            try:
+                await self.delete_expired()
+            except StorageError as error:
+                logger.warning('Conversation expiry cleanup unavailable code=%s', error.code)
+            await asyncio.sleep(RETENTION_INTERVAL_SECONDS)
+
+    async def create(self, owner: UUID, payload: ConversationCreate, *, expires_at: datetime):
         async with self.connection() as conn:
             async with conn.transaction():
-                row = await conn.fetchrow('INSERT INTO conversations(id,owner_id,create_request_id,title) VALUES($1,$2,$3,$4) ON CONFLICT(owner_id,create_request_id) DO NOTHING RETURNING *', uuid4(), owner, payload.createRequestId, payload.title)
+                await conn.execute('UPDATE conversations SET expires_at=$2 WHERE owner_id=$1 AND expires_at>$2', owner, expires_at)
+                row = await conn.fetchrow('INSERT INTO conversations(id,owner_id,create_request_id,title,expires_at) VALUES($1,$2,$3,$4,$5) ON CONFLICT(owner_id,create_request_id) DO NOTHING RETURNING *', uuid4(), owner, payload.createRequestId, payload.title, expires_at)
                 if row is None:
                     row = await conn.fetchrow('SELECT * FROM conversations WHERE owner_id=$1 AND create_request_id=$2', owner, payload.createRequestId)
                     if row['deleted_at'] is not None:

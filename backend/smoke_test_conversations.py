@@ -2,6 +2,7 @@
 import asyncio
 import os
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 from dotenv import load_dotenv
@@ -15,11 +16,12 @@ async def smoke():
     owner, other = uuid4(), uuid4()
     identifier = None
     started = time.monotonic()
+    expires_at = datetime.now(timezone.utc) + timedelta(days=30)
     try:
         create = ConversationCreate(storageConsent=True,createRequestId=uuid4(),title='Synthetic persistence check')
-        current = await store.create(owner,create)
+        current = await store.create(owner,create,expires_at=expires_at)
         identifier = current.id
-        assert (await store.create(owner,create)).id == identifier
+        assert (await store.create(owner,create,expires_at=expires_at)).id == identifier
         data = MessageCreate(storageConsent=True,requestId=uuid4(),role='user',content='합성 시험입니다.',status='completed')
         a,b = await asyncio.gather(store.append(owner,identifier,data),store.append(owner,identifier,data))
         assert a.id == b.id and a.sequence == 1
@@ -59,7 +61,7 @@ async def smoke():
         except StorageError as error:
             assert error.code == 'NOT_FOUND'
         try:
-            recreated = await store.create(owner,create)
+            recreated = await store.create(owner,create,expires_at=expires_at)
             identifier = recreated.id
             raise AssertionError('Deleted create request resurrected')
         except StorageError as error:

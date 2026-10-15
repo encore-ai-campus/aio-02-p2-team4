@@ -18,3 +18,15 @@ def test_session_rejects_tampering_and_missing_secret():
             verify_session(changed, secret, 1001)
     with pytest.raises(ValueError):
         issue_session('', 1000)
+
+
+def test_verified_session_exposes_its_original_expiry():
+    from datetime import datetime, timezone
+    from conversation_session import verify_session_details
+
+    token = issue_session('s' * 40, 1000)
+    owner, expires = verify_session_details(token, 's' * 40, 5000)
+    assert owner == verify_session(token, 's' * 40, 5000)
+    assert expires == datetime.fromtimestamp(1000 + 30 * 86400, timezone.utc)
+    with pytest.raises(ValueError):
+        verify_session_details(token + 'x', 's' * 40, 5000)

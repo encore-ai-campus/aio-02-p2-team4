@@ -24,7 +24,8 @@ async def migrate():
     try:
         async with store.connection() as conn:
             async with conn.transaction():
-                await conn.execute(Path(__file__).with_name('migrations').joinpath('001_conversations.sql').read_text(encoding='utf-8'))
+                for migration in sorted(Path(__file__).with_name('migrations').glob('*.sql')):
+                    await conn.execute(migration.read_text(encoding='utf-8'))
         print('Conversation tables: ready')
     finally:
         await store.close()
